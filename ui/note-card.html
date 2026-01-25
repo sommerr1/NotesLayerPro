@@ -1,0 +1,60 @@
+<!-- Note card template -->
+<div class="notes-layer-card-container" data-note-id="">
+  <div class="notes-layer-card-header">
+    <div class="notes-layer-card-title-wrapper">
+      <span class="notes-layer-card-title">
+        Note
+      </span>
+      <span class="notes-layer-card-mode"></span>
+    </div>
+    <button class="notes-layer-card-close" title="Close">×</button>
+  </div>
+  <div class="notes-layer-card-body">
+    <!-- Annotation mode -->
+    <div class="notes-layer-annotation-mode">
+      <div class="notes-layer-editor-container">
+        <div class="notes-layer-quill-editor"></div>
+      </div>
+    </div>
+
+    <!-- Question mode -->
+    <div class="notes-layer-question-mode" style="display: none;">
+      <div class="notes-layer-question-container">
+        <input 
+          type="text" 
+          class="notes-layer-question-input" 
+          placeholder="Enter your question..."
+        />
+        <button class="notes-layer-btn notes-layer-btn-primary notes-layer-ask-btn">
+          Get Answer
+        </button>
+      </div>
+      <div class="notes-layer-answer-container" style="display: none;">
+        <div class="notes-layer-answer-label">AI Answer:</div>
+        <div class="notes-layer-answer-text"></div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="notes-layer-buttons">
+      <button class="notes-layer-btn notes-layer-btn-primary notes-layer-switch-to-question">
+        Ask Question
+      </button>
+      <button class="notes-layer-btn notes-layer-switch-to-annotation" style="display: none;">
+        Back to Annotation
+      </button>
+      <button class="notes-layer-btn notes-layer-btn-primary notes-layer-accept-answer" style="display: none;">
+        Accept as Annotation
+      </button>
+      <button class="notes-layer-btn notes-layer-btn-danger notes-layer-delete-question" style="display: none;">
+        Delete Question
+      </button>
+      <button class="notes-layer-btn notes-layer-reanchor" style="display: none;">
+        Re-anchor Note
+      </button>
+      <button class="notes-layer-btn notes-layer-btn-danger notes-layer-delete-note">
+        Delete Note
+      </button>
+    </div>
+  </div>
+</div>

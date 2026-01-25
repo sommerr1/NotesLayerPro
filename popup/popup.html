@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Notes Layer Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="popup-header">
+      <h1>Notes Layer Pro</h1>
+      <button id="reloadBtn" class="reload-btn" title="Reload extension">🔄</button>
+    </div>
+
+    <div class="popup-search">
+      <input 
+        type="text" 
+        id="searchInput" 
+        placeholder="Search notes..."
+        class="search-input"
+      />
+    </div>
+
+    <div class="popup-tabs">
+      <button class="tab-btn active" data-tab="pages">Pages</button>
+      <button class="tab-btn" data-tab="search">Search Results</button>
+    </div>
+
+    <div class="popup-content">
+      <!-- Pages tab -->
+      <div id="pagesTab" class="tab-content active">
+        <div id="pagesList" class="pages-list">
+          <div class="loading">Loading pages...</div>
+        </div>
+      </div>
+
+      <!-- Search results tab -->
+      <div id="searchTab" class="tab-content">
+        <div id="searchResults" class="search-results">
+          <div class="empty-state">Enter a search query to find notes</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="popup-footer">
+      <button id="exportBtn" class="btn btn-primary">Export to JSON</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+/* Content script styles */
+
+.notes-layer-highlight {
+  background-color: rgba(255, 255, 0, 0.3) !important;
+  border-bottom: 2px solid rgba(255, 200, 0, 0.6) !important;
+  cursor: pointer !important;
+  position: relative !important;
+  transition: background-color 0.2s ease;
+}
+
+.notes-layer-highlight:hover {
+  background-color: rgba(255, 255, 0, 0.5) !important;
+}
+
+.notes-layer-highlight.notes-layer-warning-yellow {
+  background-color: rgba(255, 255, 0, 0.4) !important;
+  border-bottom: 2px solid rgba(255, 165, 0, 0.8) !important;
+}
+
+.notes-layer-highlight.notes-layer-warning-red {
+  background-color: rgba(255, 200, 200, 0.4) !important;
+  border-bottom: 2px solid rgba(255, 0, 0, 0.8) !important;
+}
+
+.notes-layer-marker {
+  position: absolute !important;
+  z-index: 10000 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  pointer-events: auto !important;
+}
+
+/* Note preview tooltip */
+.notes-layer-preview-tooltip {
+  position: absolute !important;
+  z-index: 100001 !important;
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  pointer-events: auto !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  animation: notes-layer-tooltip-fade-in 0.2s ease-out !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  display: inline-block !important;
+}
+
+/* Empty tooltip (no body content) */
+.notes-layer-preview-tooltip.notes-layer-preview-empty {
+  min-width: 20px !important;
+  min-height: 20px !important;
+  padding: 8px !important;
+}
+
+@keyframes notes-layer-tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+}
