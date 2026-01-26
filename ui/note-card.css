@@ -24,12 +24,65 @@
 }
 
 .notes-layer-card-header {
-  padding: 12px 16px;
+  padding: 7px 10px;
   background: #f5f5f5;
   border-bottom: 1px solid #ddd;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  min-height: auto;
+}
+
+.notes-layer-card-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-layer-toggle-panels {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  padding: 0;
+  color: #666;
+  position: relative;
+  opacity: 0.7;
+}
+
+.notes-layer-toggle-panels:hover {
+  background: rgba(74, 144, 226, 0.1);
+  color: #4a90e2;
+  opacity: 1;
+}
+
+.notes-layer-toggle-panels:active {
+  transform: scale(0.92);
+  background: rgba(74, 144, 226, 0.15);
+}
+
+.notes-layer-toggle-panels:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.notes-layer-toggle-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: rotate(0deg);
+  color: currentColor;
+}
+
+/* Rotate arrow up when panels are expanded (to indicate collapse) */
+.notes-layer-card-container.notes-layer-panels-expanded .notes-layer-toggle-icon {
+  transform: rotate(180deg);
 }
 
 .notes-layer-card-title-wrapper {
@@ -124,22 +177,83 @@
 }
 
 .notes-layer-card-mode {
-  margin-bottom: 16px;
-  padding: 8px;
-  background: #f9f9f9;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #666;
+  display: none !important;
 }
 
 .notes-layer-editor-container {
   margin-bottom: 16px;
+  border: none !important;
+}
+
+/* Remove any borders from annotation mode container */
+.notes-layer-annotation-mode {
+  border: none !important;
+}
+
+/* Hide Quill toolbar by default - show only when expanded */
+.notes-layer-card-container .ql-toolbar {
+  display: none !important;
+  border-bottom: 1px solid #ddd;
+  padding: 8px;
+  transition: all 0.2s ease;
+}
+
+/* Hide buttons by default */
+.notes-layer-panels-collapsible {
+  display: none !important;
+  transition: all 0.2s ease;
+}
+
+/* Show panels when expanded */
+.notes-layer-card-container.notes-layer-panels-expanded .notes-layer-panels-collapsible {
+  display: flex !important;
+}
+
+.notes-layer-card-container.notes-layer-panels-expanded .ql-toolbar {
+  display: flex !important;
 }
 
 .notes-layer-quill-editor {
   min-height: 150px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: none !important;
+  border-radius: 0;
+  outline: none !important;
+}
+
+/* Remove ALL borders from Quill editor - especially when panels are collapsed */
+.notes-layer-quill-editor *,
+.notes-layer-quill-editor .ql-container,
+.notes-layer-quill-editor .ql-editor,
+.notes-layer-quill-editor .ql-snow,
+.notes-layer-quill-editor .ql-snow.ql-container,
+.notes-layer-quill-editor .ql-snow .ql-container,
+.notes-layer-quill-editor .ql-snow .ql-editor,
+.notes-layer-quill-editor > .ql-container,
+.notes-layer-quill-editor > .ql-snow {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* When panels are collapsed, ensure no borders at all - more aggressive */
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor,
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor *,
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor .ql-container,
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor .ql-editor,
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor .ql-snow,
+.notes-layer-card-container:not(.notes-layer-panels-expanded) .notes-layer-quill-editor .ql-snow.ql-container {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .notes-layer-question-container {

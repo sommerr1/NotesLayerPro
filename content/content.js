@@ -646,7 +646,7 @@ class NotesLayerContent {
    */
   setupDoubleClickHandler() {
     // Double-click on text to create note
-    // Use capture phase but with lower priority (runs after setupMarkerHandlers in capture phase)
+    // Use bubble phase to allow browser to create selection first
     document.addEventListener('dblclick', async (e) => {
       console.log('Notes Layer Pro: Double-click detected in setupDoubleClickHandler', e.target);
       
@@ -659,11 +659,19 @@ class NotesLayerContent {
           return;
         }
 
-        // Check if clicking on existing highlight - setupMarkerHandlers should have handled it
+        // Check if clicking on existing highlight - open for editing
+        // This is a fallback in case setupMarkerHandlers didn't catch it
         const existingHighlight = this.getHighlightFromEvent(e);
         if (existingHighlight) {
-          console.log('Notes Layer Pro: Double-click on existing highlight - skipping (should be handled by setupMarkerHandlers)');
-          return; // setupMarkerHandlers should have handled this
+          console.log('Notes Layer Pro: Double-click on existing highlight - opening for editing (fallback)');
+          const noteId = existingHighlight.dataset.noteId;
+          if (noteId) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation(); // Prevent other handlers
+            await this.showNoteCard(noteId);
+          }
+          return; // Don't create new note if editing existing one
         }
 
         // Check if we're waiting for re-anchoring
@@ -680,23 +688,18 @@ class NotesLayerContent {
 
         console.log('Notes Layer Pro: Processing double-click for note creation');
 
-        // Wait a tiny bit for browser's default selection to be created
-        // Browser creates selection asynchronously after dblclick event
+        // Wait for browser's default selection to be created
+        // Use requestAnimationFrame to wait for next frame when selection should be ready
+        await new Promise(resolve => requestAnimationFrame(resolve));
         await new Promise(resolve => setTimeout(resolve, 50));
 
         // Get current selection (browser's default double-click selection)
-        const selection = window.getSelection();
-        if (!selection) {
-          console.log('Notes Layer Pro: No selection object available');
-          return;
-        }
-
-        // Check if there's a selection from double-click
-        let selectedText = '';
+        let selection = window.getSelection();
         let range = null;
-        
-        if (selection.rangeCount > 0) {
-          range = selection.getRangeAt(0);
+        let selectedText = '';
+
+        if (selection && selection.rangeCount > 0) {
+          range = selection.getRangeAt(0).cloneRange(); // Clone to preserve it
           selectedText = selection.toString().trim();
           console.log('Notes Layer Pro: Browser selection found:', selectedText);
         }
@@ -710,40 +713,51 @@ class NotesLayerContent {
             return;
           }
           
+          // Create selection if needed
+          if (!selection) {
+            selection = window.getSelection();
+          }
+          if (!selection) {
+            console.log('Notes Layer Pro: No selection object available');
+            return;
+          }
+          
           // Clear any existing selection first
           selection.removeAllRanges();
           
           // Add the word range to selection (this will visually highlight it)
           selection.addRange(wordRange);
-          range = wordRange;
+          range = wordRange.cloneRange(); // Clone to preserve
           selectedText = selection.toString().trim();
           console.log('Notes Layer Pro: Word range created:', selectedText);
         }
 
-        // Check if there's selected text
-        if (!selectedText || selectedText.length === 0) {
+        // Check if we have valid selection
+        if (!selectedText || selectedText.length === 0 || !range || !selection) {
           console.log('Notes Layer Pro: No selected text after all attempts');
           return;
         }
 
         console.log('Notes Layer Pro: Creating note from double-click selection:', selectedText);
 
-        // Double-click is on text, create note
+        // Now prevent default and stop propagation
         e.preventDefault();
         e.stopPropagation();
-        
-        this.isCreatingNote = true;
-        try {
-          await this.createNoteFromSelection(selection);
-        } finally {
-          this.isCreatingNote = false;
+
+        // Ensure we have the range in selection before creating note
+        if (selection.rangeCount === 0 || selection.toString().trim() !== selectedText) {
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
+        
+        // Let createNoteFromSelection manage the isCreatingNote flag itself
+        await this.createNoteFromSelection(selection);
         this.hideCreateNoteButton();
       } catch (error) {
         console.error('Notes Layer Pro: Error in double-click handler:', error);
-        this.isCreatingNote = false;
+        // createNoteFromSelection manages isCreatingNote flag in its finally block
       }
-    }, true); // Use capture phase, but runs after setupMarkerHandlers (registered later)
+    }, false); // Use bubble phase to allow browser to create selection first
   }
 
   /**
@@ -902,6 +916,31 @@ class NotesLayerContent {
           console.log('Notes Layer Pro: Highlighting text...');
           this.highlighter.highlightText(range, noteResponse.note.id, 'none');
           console.log('Notes Layer Pro: Text highlighted');
+          
+          // Wait for DOM to update and verify highlight was created correctly
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          
+          // Verify highlight exists and has correct noteId
+          const highlight = this.highlighter.getHighlight(noteResponse.note.id);
+          if (highlight) {
+            const highlightElement = highlight.element || (highlight.elements && highlight.elements[0]);
+            if (highlightElement) {
+              // Ensure dataset.noteId is set correctly
+              if (!highlightElement.dataset.noteId || highlightElement.dataset.noteId !== noteResponse.note.id) {
+                console.warn('Notes Layer Pro: Fixing missing noteId on highlight element');
+                highlightElement.dataset.noteId = noteResponse.note.id;
+              }
+              // Also fix for multi-node highlights
+              if (highlight.elements) {
+                highlight.elements.forEach(el => {
+                  if (!el.dataset.noteId || el.dataset.noteId !== noteResponse.note.id) {
+                    el.dataset.noteId = noteResponse.note.id;
+                  }
+                });
+              }
+              console.log('Notes Layer Pro: Highlight verified and ready for hover');
+            }
+          }
           
           // Keep selection visible after highlighting
           // The highlight will replace the selection, but we want to show it was selected
@@ -1098,18 +1137,35 @@ class NotesLayerContent {
         return;
       }
 
-      const noteId = highlight.dataset.noteId;
+      let noteId = highlight.dataset.noteId;
       if (!noteId) {
-        console.warn('Notes Layer Pro: Highlight found but no noteId', highlight);
-        return;
+        // Try to get noteId from the highlight element stored in highlighter
+        // This can happen if highlight was just created and DOM hasn't fully updated
+        const highlightData = Array.from(this.highlighter.highlights.values()).find(h => {
+          const el = h.element || (h.elements && h.elements[0]);
+          return el === highlight || (h.elements && h.elements.includes(highlight));
+        });
+        if (highlightData) {
+          // Find noteId from highlights map
+          for (const [id, data] of this.highlighter.highlights.entries()) {
+            if (data === highlightData) {
+              noteId = id;
+              // Fix the dataset for future
+              highlight.dataset.noteId = noteId;
+              break;
+            }
+          }
+        }
+        if (!noteId) {
+          console.warn('Notes Layer Pro: Highlight found but no noteId', highlight);
+          return;
+        }
       }
 
       // Don't show tooltip if note card is already open
       if (this.openCards.has(noteId)) {
         return;
       }
-
-      // Don't log every mouseover to reduce console noise
 
       // Clear any existing timeout
       if (this.hoverTimeout) {
@@ -1287,6 +1343,11 @@ class NotesLayerContent {
         // Center
         transformX = '-50%';
       }
+
+      // Apply positioning
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+      tooltip.style.transform = `translate(${transformX}, ${transformY})`;
 
       // Tooltip already added to document for measurement
       this.currentTooltip = tooltip;
@@ -1516,6 +1577,13 @@ class NotesLayerContent {
       const { noteId } = e.detail;
       this.highlighter.removeHighlight(noteId);
       this.openCards.delete(noteId);
+    });
+
+    // Handle card close
+    document.addEventListener('notes-layer-card-closed', (e) => {
+      const { noteId } = e.detail;
+      this.openCards.delete(noteId);
+      console.log('Notes Layer Pro: Card closed, removed from openCards', noteId);
     });
 
     // Handle re-anchoring

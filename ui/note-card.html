@@ -5,9 +5,15 @@
       <span class="notes-layer-card-title">
         Note
       </span>
-      <span class="notes-layer-card-mode"></span>
     </div>
-    <button class="notes-layer-card-close" title="Close">×</button>
+    <div class="notes-layer-card-header-controls">
+      <button class="notes-layer-toggle-panels" title="Toggle panels" aria-label="Toggle panels">
+        <svg class="notes-layer-toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="notes-layer-card-close" title="Close">×</button>
+    </div>
   </div>
   <div class="notes-layer-card-body">
     <!-- Annotation mode -->
@@ -36,7 +42,7 @@
     </div>
 
     <!-- Buttons -->
-    <div class="notes-layer-buttons">
+    <div class="notes-layer-buttons notes-layer-panels-collapsible">
       <button class="notes-layer-btn notes-layer-btn-primary notes-layer-switch-to-question">
         Ask Question
       </button>

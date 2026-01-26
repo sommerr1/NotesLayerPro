@@ -436,10 +436,11 @@ class NoteCard {
         });
 
         if (response.success && response.anchor && response.anchor.text) {
+            const anchorText = response.anchor.text;
             // Insert text as quote or bold
-            this.quill.insertText(0, response.anchor.text + '\n\n', 'bold', true);
-            // Move cursor to end
-            this.quill.setSelection(this.quill.getLength(), 0);
+            this.quill.insertText(0, anchorText + '\n\n', 'bold', true);
+            // Move cursor immediately after the inserted word on first line
+            this.quill.setSelection(anchorText.length, 0);
             this.quill.focus();
         }
     } catch (error) {
@@ -468,18 +469,13 @@ class NoteCard {
       if (switchToAnnotationBtn) switchToAnnotationBtn.style.display = 'none';
       if (acceptAnswerBtn) acceptAnswerBtn.style.display = 'none';
       if (deleteQuestionBtn) deleteQuestionBtn.style.display = 'none';
-      // Mode label is hidden dynamically in setHeaderText, no need to set text here if overridden
-      if (modeLabel && modeLabel.style.display !== 'none') modeLabel.textContent = 'Annotation Mode';
+      // Mode label is hidden - no longer needed
     } else {
       if (annotationMode) annotationMode.style.display = 'none';
       if (questionMode) questionMode.style.display = 'block';
       if (switchToQuestionBtn) switchToQuestionBtn.style.display = 'none';
       if (switchToAnnotationBtn) switchToAnnotationBtn.style.display = 'inline-block';
-      // Only show mode label for Question Mode if we want to differentiate, or keep it hidden if we want header to be just the text
-      if (modeLabel) {
-          modeLabel.style.display = 'inline-block';
-          modeLabel.textContent = 'Question Mode';
-      }
+      // Mode label is hidden - no longer needed
     }
   }
 
@@ -487,6 +483,15 @@ class NoteCard {
    * Setup event listeners
    */
   setupEventListeners() {
+    // Toggle panels button
+    const toggleButton = this.container.querySelector('.notes-layer-toggle-panels');
+    if (toggleButton) {
+      toggleButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.container.classList.toggle('notes-layer-panels-expanded');
+      });
+    }
+
     // Close button
     const closeBtn = this.container.querySelector('.notes-layer-card-close');
     if (closeBtn) {
@@ -992,6 +997,14 @@ class NoteCard {
    * Close card
    */
   close() {
+    // Dispatch event to notify that card is closing
+    if (this.noteId) {
+      const event = new CustomEvent('notes-layer-card-closed', {
+        detail: { noteId: this.noteId }
+      });
+      document.dispatchEvent(event);
+    }
+    
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
     }
