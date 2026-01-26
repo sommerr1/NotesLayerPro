@@ -6,6 +6,29 @@
         Note
       </span>
     </div>
+    <div class="notes-layer-card-header-actions">
+      <button class="notes-layer-header-btn notes-layer-back-to-annotation-btn" title="Back to Annotation" aria-label="Back to Annotation" style="display: none;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <button class="notes-layer-header-btn notes-layer-ask-question-btn" title="Ask AI" aria-label="Ask AI">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </button>
+      <button class="notes-layer-header-btn notes-layer-delete-note-btn" title="Delete Note" aria-label="Delete Note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+      </button>
+    </div>
     <div class="notes-layer-card-header-controls">
       <button class="notes-layer-toggle-panels" title="Toggle panels" aria-label="Toggle panels">
         <svg class="notes-layer-toggle-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -31,9 +54,6 @@
           class="notes-layer-question-input" 
           placeholder="Enter your question..."
         />
-        <button class="notes-layer-btn notes-layer-btn-primary notes-layer-ask-btn">
-          Get Answer
-        </button>
       </div>
       <div class="notes-layer-answer-container" style="display: none;">
         <div class="notes-layer-answer-label">AI Answer:</div>
@@ -43,9 +63,6 @@
 
     <!-- Buttons -->
     <div class="notes-layer-buttons notes-layer-panels-collapsible">
-      <button class="notes-layer-btn notes-layer-btn-primary notes-layer-switch-to-question">
-        Ask Question
-      </button>
       <button class="notes-layer-btn notes-layer-switch-to-annotation" style="display: none;">
         Back to Annotation
       </button>
@@ -57,9 +74,6 @@
       </button>
       <button class="notes-layer-btn notes-layer-reanchor" style="display: none;">
         Re-anchor Note
-      </button>
-      <button class="notes-layer-btn notes-layer-btn-danger notes-layer-delete-note">
-        Delete Note
       </button>
     </div>
   </div>

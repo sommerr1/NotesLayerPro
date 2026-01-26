@@ -11,6 +11,33 @@ export class GoogleSearchProvider extends LLMProvider {
   }
 
   /**
+   * Check if tab exists
+   */
+  static async checkTabExists(tabId) {
+    return new Promise((resolve) => {
+      chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError) {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+  }
+
+  /**
+   * Safely remove tab if it exists
+   */
+  static async safeRemoveTab(tabId) {
+    const exists = await GoogleSearchProvider.checkTabExists(tabId);
+    if (exists) {
+      chrome.tabs.remove(tabId, () => {
+        // Ignore errors - tab might have been closed by user
+      });
+    }
+  }
+
+  /**
    * Ask a question via Google Search and parse Gemini answer
    */
   async askQuestion(question) {
@@ -44,7 +71,7 @@ export class GoogleSearchProvider extends LLMProvider {
           
           chrome.tabs.get(tab.id, (currentTab) => {
             if (chrome.runtime.lastError) {
-              chrome.tabs.remove(tab.id);
+              GoogleSearchProvider.safeRemoveTab(tab.id);
               reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
               return;
             }
@@ -54,11 +81,11 @@ export class GoogleSearchProvider extends LLMProvider {
               if (!currentTab.url || (!currentTab.url.includes('google.com/ai') && !currentTab.url.includes('google.com/search'))) {
                 // Check if redirected to captcha or blocked page
                 if (currentTab.url && (currentTab.url.includes('sorry') || currentTab.url.includes('captcha') || currentTab.url.includes('blocked'))) {
-                  chrome.tabs.remove(tab.id);
+                  GoogleSearchProvider.safeRemoveTab(tab.id);
                   reject(new Error('GOOGLE_BLOCKED: Google заблокировал автоматический запрос. Пожалуйста, попробуйте позже или используйте другой вопрос.'));
                   return;
                 }
-                chrome.tabs.remove(tab.id);
+                GoogleSearchProvider.safeRemoveTab(tab.id);
                 reject(new Error('REDIRECT_ERROR: Google Search перенаправил на другую страницу. Попробуйте еще раз или переформулируйте вопрос.'));
                 return;
               }
@@ -66,19 +93,57 @@ export class GoogleSearchProvider extends LLMProvider {
               // Solution 1: Add random delay before extraction (mimic human reading time)
               const readDelay = GoogleSearchProvider.randomDelay(2000, 4000);
               setTimeout(() => {
-                // Solution 1: Simulate human behavior - scroll and interact
-                chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  func: GoogleSearchProvider.simulateHumanBehavior
-                }, () => {
-                  // Solution 1 & 3: Add random delay after human simulation
-                  const behaviorDelay = GoogleSearchProvider.randomDelay(1000, 2000);
-                  setTimeout(() => {
-                    // First, try to activate AI mode
-                    chrome.scripting.executeScript({
-                      target: { tabId: tab.id },
-                      func: GoogleSearchProvider.activateAIMode
-                    }, (activateResults) => {
+                // Check if tab still exists before executing script
+                GoogleSearchProvider.checkTabExists(tab.id).then(tabExists => {
+                  if (!tabExists) {
+                    reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
+                    return;
+                  }
+                  
+                  // Solution 1: Simulate human behavior - scroll and interact
+                  chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: GoogleSearchProvider.simulateHumanBehavior
+                  }, () => {
+                    // Check if tab was closed during script execution
+                    if (chrome.runtime.lastError) {
+                      const errorMsg = chrome.runtime.lastError.message || '';
+                      const isTabClosed = errorMsg.includes('No tab with id') || 
+                                           errorMsg.includes('tab was closed') || 
+                                           errorMsg.includes('Invalid tab ID') ||
+                                           errorMsg.includes('Cannot access');
+                      if (isTabClosed) {
+                        reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
+                        return;
+                      }
+                    }
+                    // Solution 1 & 3: Add random delay after human simulation
+                    const behaviorDelay = GoogleSearchProvider.randomDelay(1000, 2000);
+                    setTimeout(() => {
+                      // Check if tab still exists before executing script
+                      GoogleSearchProvider.checkTabExists(tab.id).then(tabExists => {
+                        if (!tabExists) {
+                          reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
+                          return;
+                        }
+                        
+                        // First, try to activate AI mode
+                        chrome.scripting.executeScript({
+                          target: { tabId: tab.id },
+                          func: GoogleSearchProvider.activateAIMode
+                        }, (activateResults) => {
+                          // Check if tab was closed during script execution
+                          if (chrome.runtime.lastError) {
+                            const errorMsg = chrome.runtime.lastError.message || '';
+                            const isTabClosed = errorMsg.includes('No tab with id') || 
+                                                 errorMsg.includes('tab was closed') || 
+                                                 errorMsg.includes('Invalid tab ID') ||
+                                                 errorMsg.includes('Cannot access');
+                            if (isTabClosed) {
+                              reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
+                              return;
+                            }
+                          }
                       // Solution 1 & 3: Wait longer for AI mode with random delay
                       const aiLoadDelay = GoogleSearchProvider.randomDelay(4000, 6000);
                       setTimeout(() => {
@@ -89,83 +154,168 @@ export class GoogleSearchProvider extends LLMProvider {
                         const tryExtract = () => {
                           extractAttempts++;
                           
-                          // Inject script to extract AI answer
-                          chrome.scripting.executeScript({
-                            target: { tabId: tab.id },
-                            func: GoogleSearchProvider.extractAIAnswer
-                          }, (results) => {
+                          // Check if tab still exists before executing script
+                          GoogleSearchProvider.checkTabExists(tab.id).then(tabExists => {
+                            if (!tabExists) {
+                              reject(new Error('EXTENSION_ERROR: Вкладка была закрыта неожиданно. Попробуйте еще раз.'));
+                              return;
+                            }
+                            
+                            // Inject script to extract AI answer
+                            chrome.scripting.executeScript({
+                              target: { tabId: tab.id },
+                              func: GoogleSearchProvider.extractAIAnswer
+                            }, (results) => {
                             if (chrome.runtime.lastError) {
+                              // Check if error is due to closed tab
+                              const errorMsg = chrome.runtime.lastError.message || '';
+                              const isTabClosed = errorMsg.includes('No tab with id') || 
+                                                   errorMsg.includes('tab was closed') || 
+                                                   errorMsg.includes('Invalid tab ID') ||
+                                                   errorMsg.includes('Cannot access');
+                              
+                              if (isTabClosed) {
+                                // Tab was closed - check if we have any partial results
+                                if (results && results[0] && results[0].result) {
+                                  // We have a result, return it without screenshot
+                                  resolve({
+                                    text: results[0].result,
+                                    screenshot: null
+                                  });
+                                  return;
+                                }
+                                // No result, reject with specific error
+                                reject(new Error('EXTENSION_ERROR: Вкладка была закрыта до завершения извлечения ответа. Попробуйте еще раз.'));
+                                return;
+                              }
+                              
                               if (extractAttempts < maxExtractAttempts) {
                                 // Solution 3: Retry after random delay
                                 const retryDelay = GoogleSearchProvider.randomDelay(1500, 3000);
                                 setTimeout(tryExtract, retryDelay);
                                 return;
                               }
-                              chrome.tabs.remove(tab.id);
+                              GoogleSearchProvider.safeRemoveTab(tab.id);
                               reject(new Error(`EXTRACTION_ERROR: ${chrome.runtime.lastError.message}`));
                               return;
                             }
 
                             if (results && results[0] && results[0].result) {
-                              // Try to capture screenshot as well
-                              GoogleSearchProvider.captureAnswerScreenshot(tab.id)
-                                .then(screenshot => {
-                                  chrome.tabs.remove(tab.id);
-                                  // Return both text and screenshot
-                                  resolve({
-                                    text: results[0].result,
-                                    screenshot: screenshot
-                                  });
-                                })
-                                .catch(() => {
-                                  // If screenshot fails, just return text
-                                  chrome.tabs.remove(tab.id);
+                              // Check if tab still exists before trying to capture screenshot
+                              GoogleSearchProvider.checkTabExists(tab.id).then(tabExists => {
+                                if (tabExists) {
+                                  // Try to capture screenshot as well
+                                  GoogleSearchProvider.captureAnswerScreenshot(tab.id)
+                                    .then(screenshot => {
+                                      GoogleSearchProvider.safeRemoveTab(tab.id);
+                                      // Return both text and screenshot
+                                      resolve({
+                                        text: results[0].result,
+                                        screenshot: screenshot
+                                      });
+                                    })
+                                    .catch(() => {
+                                      // If screenshot fails, just return text
+                                      GoogleSearchProvider.safeRemoveTab(tab.id);
+                                      resolve({
+                                        text: results[0].result,
+                                        screenshot: null
+                                      });
+                                    });
+                                } else {
+                                  // Tab was closed by user, but we have the answer - return it without screenshot
                                   resolve({
                                     text: results[0].result,
                                     screenshot: null
                                   });
-                                });
+                                }
+                              });
                             } else if (extractAttempts < maxExtractAttempts) {
                               // Solution 3: Retry extraction after random delay
                               const retryDelay = GoogleSearchProvider.randomDelay(2000, 4000);
                               setTimeout(tryExtract, retryDelay);
                             } else {
                               // Final attempt - try to get at least first search result as fallback
-                              chrome.scripting.executeScript({
-                                target: { tabId: tab.id },
-                                func: GoogleSearchProvider.extractFirstResult
-                              }, (fallbackResults) => {
-                                chrome.tabs.remove(tab.id);
-                                
-                                if (fallbackResults && fallbackResults[0] && fallbackResults[0].result) {
-                                  // Try to capture screenshot as fallback
-                                  GoogleSearchProvider.captureAnswerScreenshot(tab.id)
-                                    .then(screenshot => {
-                                      chrome.tabs.remove(tab.id);
-                                      resolve({
-                                        text: fallbackResults[0].result,
-                                        screenshot: screenshot
-                                      });
-                                    })
-                                    .catch(() => {
-                                      chrome.tabs.remove(tab.id);
-                                      resolve({
-                                        text: fallbackResults[0].result,
-                                        screenshot: null
-                                      });
-                                    });
-                                } else {
+                              // Check if tab still exists before trying to extract
+                              GoogleSearchProvider.checkTabExists(tab.id).then(tabExists => {
+                                if (!tabExists) {
+                                  // Tab was closed by user
                                   reject(new Error('EXTRACTION_FAILED: Не удалось извлечь ответ из Google Search. Возможные причины:\n• Google заблокировал автоматический запрос\n• Вопрос слишком сложный\n• Страница не загрузилась полностью\n\nПопробуйте переформулировать вопрос или использовать более простой запрос.'));
+                                  return;
                                 }
+                                
+                                chrome.scripting.executeScript({
+                                  target: { tabId: tab.id },
+                                  func: GoogleSearchProvider.extractFirstResult
+                                }, (fallbackResults) => {
+                                  // Check if tab was closed during script execution
+                                  if (chrome.runtime.lastError) {
+                                    const errorMsg = chrome.runtime.lastError.message || '';
+                                    const isTabClosed = errorMsg.includes('No tab with id') || 
+                                                         errorMsg.includes('tab was closed') || 
+                                                         errorMsg.includes('Invalid tab ID') ||
+                                                         errorMsg.includes('Cannot access');
+                                    if (isTabClosed) {
+                                      // Tab was closed - check if we have any partial results
+                                      if (fallbackResults && fallbackResults[0] && fallbackResults[0].result) {
+                                        // We have a result, return it without screenshot
+                                        resolve({
+                                          text: fallbackResults[0].result,
+                                          screenshot: null
+                                        });
+                                        return;
+                                      }
+                                      // No result, reject with specific error
+                                      reject(new Error('EXTENSION_ERROR: Вкладка была закрыта до завершения извлечения ответа. Попробуйте еще раз.'));
+                                      return;
+                                    }
+                                  }
+                                  
+                                  if (fallbackResults && fallbackResults[0] && fallbackResults[0].result) {
+                                    // Check if tab still exists before trying to capture screenshot
+                                    GoogleSearchProvider.checkTabExists(tab.id).then(tabStillExists => {
+                                      if (tabStillExists) {
+                                        // Try to capture screenshot as fallback
+                                        GoogleSearchProvider.captureAnswerScreenshot(tab.id)
+                                          .then(screenshot => {
+                                            GoogleSearchProvider.safeRemoveTab(tab.id);
+                                            resolve({
+                                              text: fallbackResults[0].result,
+                                              screenshot: screenshot
+                                            });
+                                          })
+                                          .catch(() => {
+                                            GoogleSearchProvider.safeRemoveTab(tab.id);
+                                            resolve({
+                                              text: fallbackResults[0].result,
+                                              screenshot: null
+                                            });
+                                          });
+                                      } else {
+                                        // Tab was closed by user, but we have the answer - return it without screenshot
+                                        resolve({
+                                          text: fallbackResults[0].result,
+                                          screenshot: null
+                                        });
+                                      }
+                                    });
+                                  } else {
+                                    GoogleSearchProvider.safeRemoveTab(tab.id);
+                                    reject(new Error('EXTRACTION_FAILED: Не удалось извлечь ответ из Google Search. Возможные причины:\n• Google заблокировал автоматический запрос\n• Вопрос слишком сложный\n• Страница не загрузилась полностью\n\nПопробуйте переформулировать вопрос или использовать более простой запрос.'));
+                                  }
+                                });
                               });
                             }
+                            });
                           });
                         };
                         
                         tryExtract();
                       }, aiLoadDelay);
+                      });
                     });
                   }, behaviorDelay);
+                  });
                 });
               }, readDelay);
             } else {
@@ -185,45 +335,100 @@ export class GoogleSearchProvider extends LLMProvider {
 
   /**
    * Capture screenshot of AI answer area
+   * Returns null if tab is closed (doesn't throw error)
    */
   static async captureAnswerScreenshot(tabId) {
     return new Promise((resolve, reject) => {
-      // First, get the coordinates of the answer area
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: GoogleSearchProvider.getAnswerAreaBounds
-      }, (boundsResult) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+      // First check if tab exists
+      GoogleSearchProvider.checkTabExists(tabId).then(tabExists => {
+        if (!tabExists) {
+          // Tab was closed - return null instead of throwing error
+          resolve(null);
           return;
         }
 
-        const bounds = boundsResult && boundsResult[0] && boundsResult[0].result;
-        
-        // Make tab visible temporarily for screenshot
-        chrome.tabs.update(tabId, { active: true }, () => {
-          // Wait a bit for tab to become visible
-          setTimeout(() => {
-            // Capture visible tab
-            chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
-              // Hide tab again
-              chrome.tabs.update(tabId, { active: false });
-              
+        // First, get the coordinates of the answer area
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: GoogleSearchProvider.getAnswerAreaBounds
+        }, (boundsResult) => {
+          if (chrome.runtime.lastError) {
+            // Check if error is due to closed tab
+            const errorMsg = chrome.runtime.lastError.message || '';
+            if (errorMsg.includes('No tab with id') || errorMsg.includes('tab was closed') || errorMsg.includes('Invalid tab ID')) {
+              resolve(null);
+              return;
+            }
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          const bounds = boundsResult && boundsResult[0] && boundsResult[0].result;
+          
+          // Check if tab still exists before making it visible
+          GoogleSearchProvider.checkTabExists(tabId).then(tabStillExists => {
+            if (!tabStillExists) {
+              // Tab was closed - return null instead of throwing error
+              resolve(null);
+              return;
+            }
+
+            // Make tab visible temporarily for screenshot
+            chrome.tabs.update(tabId, { active: true }, () => {
               if (chrome.runtime.lastError) {
+                // Check if error is due to closed tab
+                const errorMsg = chrome.runtime.lastError.message || '';
+                if (errorMsg.includes('No tab with id') || errorMsg.includes('tab was closed') || errorMsg.includes('Invalid tab ID')) {
+                  resolve(null);
+                  return;
+                }
                 reject(new Error(chrome.runtime.lastError.message));
                 return;
               }
 
-              if (!dataUrl) {
-                reject(new Error('Failed to capture screenshot'));
-                return;
-              }
+              // Wait a bit for tab to become visible
+              setTimeout(() => {
+                // Check if tab still exists before capturing
+                GoogleSearchProvider.checkTabExists(tabId).then(tabExistsForCapture => {
+                  if (!tabExistsForCapture) {
+                    // Tab was closed - return null instead of throwing error
+                    resolve(null);
+                    return;
+                  }
 
-              // Return full screenshot (cropping can be done client-side if needed)
-              // For now, we return the full screenshot which includes the answer area
-              resolve(dataUrl);
+                  // Capture visible tab
+                  chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+                    // Hide tab again (if it still exists)
+                    GoogleSearchProvider.checkTabExists(tabId).then(tabExistsForHide => {
+                      if (tabExistsForHide) {
+                        chrome.tabs.update(tabId, { active: false });
+                      }
+                    });
+                    
+                    if (chrome.runtime.lastError) {
+                      // Check if error is due to closed tab
+                      const errorMsg = chrome.runtime.lastError.message || '';
+                      if (errorMsg.includes('No tab with id') || errorMsg.includes('tab was closed') || errorMsg.includes('Invalid tab ID')) {
+                        resolve(null);
+                        return;
+                      }
+                      reject(new Error(chrome.runtime.lastError.message));
+                      return;
+                    }
+
+                    if (!dataUrl) {
+                      reject(new Error('Failed to capture screenshot'));
+                      return;
+                    }
+
+                    // Return full screenshot (cropping can be done client-side if needed)
+                    // For now, we return the full screenshot which includes the answer area
+                    resolve(dataUrl);
+                  });
+                });
+              }, 500);
             });
-          }, 500);
+          });
         });
       });
     });

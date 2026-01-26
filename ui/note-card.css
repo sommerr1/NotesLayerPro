@@ -28,8 +28,8 @@
   background: #f5f5f5;
   border-bottom: 1px solid #ddd;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   min-height: auto;
 }
 
@@ -37,6 +37,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .notes-layer-toggle-panels {
@@ -91,6 +93,56 @@
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+.notes-layer-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.notes-layer-header-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0.6;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #666;
+  border-radius: 3px;
+  position: relative;
+}
+
+.notes-layer-header-btn:hover {
+  opacity: 1;
+  background: rgba(74, 144, 226, 0.1);
+  color: #4a90e2;
+}
+
+.notes-layer-header-btn:active {
+  transform: scale(0.9);
+  background: rgba(74, 144, 226, 0.2);
+}
+
+.notes-layer-header-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.notes-layer-delete-note-btn:hover {
+  background: rgba(255, 68, 68, 0.1);
+  color: #ff4444;
+}
+
+.notes-layer-delete-note-btn:active {
+  background: rgba(255, 68, 68, 0.2);
 }
 
 .notes-layer-card-title {
@@ -218,6 +270,52 @@
   border: none !important;
   border-radius: 0;
   outline: none !important;
+}
+
+/* Make links visible in Quill editor */
+.notes-layer-quill-editor .ql-editor a {
+  color: #0066cc !important;
+  text-decoration: underline !important;
+  cursor: pointer;
+}
+
+.notes-layer-quill-editor .ql-editor a:hover {
+  color: #0052a3 !important;
+  text-decoration: underline !important;
+}
+
+/* Fix Quill link tooltip positioning - make it visible and properly positioned */
+.notes-layer-card-container .ql-tooltip,
+.ql-tooltip {
+  position: fixed !important;
+  z-index: 100001 !important;
+  white-space: nowrap !important;
+  min-width: 300px !important;
+  max-width: calc(100vw - 40px) !important;
+  overflow: visible !important;
+  /* Remove any default positioning that might interfere */
+  margin: 0 !important;
+  transform: none !important;
+}
+
+/* Ensure tooltip inputs are visible and properly sized */
+.notes-layer-card-container .ql-tooltip input[type="text"],
+.ql-tooltip input[type="text"] {
+  min-width: 200px !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 6px 8px !important;
+  margin: 0 4px !important;
+  width: auto !important;
+}
+
+/* Ensure tooltip form is flexible */
+.notes-layer-card-container .ql-tooltip form,
+.ql-tooltip form {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
 }
 
 /* Remove ALL borders from Quill editor - especially when panels are collapsed */

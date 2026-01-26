@@ -126,7 +126,8 @@ class NoteCard {
         modules: {
           toolbar: [
             ['bold', 'italic', 'underline'],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }]
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            ['link']
           ]
         }
       });
@@ -141,6 +142,24 @@ class NoteCard {
           this.saveAnnotation();
         }, 500); // Save 500ms after user stops typing
       });
+
+      // Track selection changes to save last selection
+      this.lastSelection = null;
+      this.quill.on('selection-change', (range) => {
+        if (range && range.length > 0) {
+          try {
+            const text = this.quill.getText(range.index, range.length).trim();
+            if (text) {
+              this.lastSelection = text;
+            }
+          } catch (error) {
+            // Ignore errors
+          }
+        }
+      });
+
+      // Fix tooltip positioning when it appears
+      this.setupTooltipPositionFix();
 
       console.log('Quill editor initialized successfully');
     } catch (error) {
@@ -223,10 +242,15 @@ class NoteCard {
 
         // First, try to use note title if available
         if (this.noteData && this.noteData.title && this.noteData.title !== 'annotation') {
-            const displayText = this.noteData.title;
+            const fullTitle = this.noteData.title;
+            // Truncate title to 30 characters with ellipsis if longer
+            let displayText = fullTitle;
+            if (displayText.length > 30) {
+              displayText = displayText.substring(0, 30) + '...';
+            }
             titleElement.appendChild(document.createTextNode(displayText));
             titleElement.appendChild(createEditButton());
-            titleElement.title = this.noteData.title;
+            titleElement.title = fullTitle; // Full title on hover
             return;
         }
 
@@ -302,21 +326,56 @@ class NoteCard {
     while (titleElement.firstChild) {
       titleElement.removeChild(titleElement.firstChild);
     }
-    titleElement.textContent = currentTitle;
+    
+    // Store full title in data attribute
+    titleElement.dataset.fullTitle = currentTitle;
+    
+    // Truncate title to 30 characters with ellipsis if longer for display
+    let displayTitle = currentTitle;
+    if (displayTitle.length > 30) {
+      displayTitle = displayTitle.substring(0, 30) + '...';
+    }
+    titleElement.textContent = displayTitle;
+    
+    // On focus, show full text for editing
+    const showFullTitle = () => {
+      if (titleElement.textContent.includes('...') && titleElement.dataset.fullTitle) {
+        titleElement.textContent = titleElement.dataset.fullTitle;
+      }
+    };
+    
+    titleElement.addEventListener('focus', showFullTitle, { once: true });
     titleElement.focus();
     
-    // Select all text
-    const range = document.createRange();
-    range.selectNodeContents(titleElement);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
+    // Select all text after a short delay to ensure full text is shown
+    setTimeout(() => {
+      const range = document.createRange();
+      range.selectNodeContents(titleElement);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, 10);
 
     // Save on blur or Enter key
     const saveTitle = async () => {
-      const newTitle = titleElement.textContent.trim();
+      let newTitle = titleElement.textContent.trim();
+      // If title was truncated and user didn't edit it, use full title
+      if (newTitle.endsWith('...') && titleElement.dataset.fullTitle) {
+        // Check if user actually edited (if text is different from truncated version)
+        const truncated = titleElement.dataset.fullTitle.length > 30 
+          ? titleElement.dataset.fullTitle.substring(0, 30) + '...'
+          : titleElement.dataset.fullTitle;
+        if (newTitle === truncated) {
+          // User didn't edit, use full title
+          newTitle = titleElement.dataset.fullTitle;
+        } else {
+          // User edited, remove ellipsis if present
+          newTitle = newTitle.replace(/\.\.\.$/, '');
+        }
+      }
       titleElement.contentEditable = 'false';
       titleElement.classList.remove('editing');
+      delete titleElement.dataset.fullTitle;
 
       // Update title if changed
       if (newTitle && newTitle !== currentTitle) {
@@ -329,21 +388,31 @@ class NoteCard {
         while (titleElement.firstChild) {
           titleElement.removeChild(titleElement.firstChild);
         }
-        titleElement.appendChild(document.createTextNode(restoredTitle));
+        // Truncate title to 30 characters with ellipsis if longer
+        let displayTitle = restoredTitle;
+        if (displayTitle.length > 30) {
+          displayTitle = displayTitle.substring(0, 30) + '...';
+        }
+        titleElement.appendChild(document.createTextNode(displayTitle));
         if (editBtnClone) {
           titleElement.appendChild(editBtnClone);
         }
-        titleElement.title = restoredTitle;
+        titleElement.title = restoredTitle; // Full title on hover
       } else {
         // Title unchanged, just restore display
         while (titleElement.firstChild) {
           titleElement.removeChild(titleElement.firstChild);
         }
-        titleElement.appendChild(document.createTextNode(newTitle));
+        // Truncate title to 30 characters with ellipsis if longer
+        let displayTitle = newTitle;
+        if (displayTitle.length > 30) {
+          displayTitle = displayTitle.substring(0, 30) + '...';
+        }
+        titleElement.appendChild(document.createTextNode(displayTitle));
         if (editBtnClone) {
           titleElement.appendChild(editBtnClone);
         }
-        titleElement.title = newTitle;
+        titleElement.title = newTitle; // Full title on hover
       }
     };
 
@@ -354,10 +423,21 @@ class NoteCard {
         titleElement.blur();
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        titleElement.textContent = currentTitle || 'Note';
+        const restoredTitle = currentTitle || 'Note';
+        // Remove all children
+        while (titleElement.firstChild) {
+          titleElement.removeChild(titleElement.firstChild);
+        }
+        // Truncate title to 30 characters with ellipsis if longer
+        let displayTitle = restoredTitle;
+        if (displayTitle.length > 30) {
+          displayTitle = displayTitle.substring(0, 30) + '...';
+        }
+        titleElement.textContent = displayTitle;
         if (editBtnClone) {
           titleElement.appendChild(editBtnClone);
         }
+        titleElement.title = restoredTitle; // Full title on hover
         titleElement.contentEditable = 'false';
         titleElement.classList.remove('editing');
       }
@@ -396,8 +476,13 @@ class NoteCard {
             while (titleElement.firstChild) {
               titleElement.removeChild(titleElement.firstChild);
             }
+            // Truncate title to 30 characters with ellipsis if longer
+            let displayTitle = newTitle;
+            if (displayTitle.length > 30) {
+              displayTitle = displayTitle.substring(0, 30) + '...';
+            }
             // Add text and edit button
-            titleElement.appendChild(document.createTextNode(newTitle));
+            titleElement.appendChild(document.createTextNode(displayTitle));
             if (editBtn) {
               titleElement.appendChild(editBtn);
             } else {
@@ -410,7 +495,7 @@ class NoteCard {
               newEditBtn.addEventListener('click', () => this.startEditingTitle());
               titleElement.appendChild(newEditBtn);
             }
-            titleElement.title = newTitle;
+            titleElement.title = newTitle; // Full title on hover
           }
 
           console.log('Title saved successfully:', newTitle);
@@ -449,33 +534,267 @@ class NoteCard {
   }
 
   /**
-   * Set mode (annotation or question)
+   * Setup tooltip position fix to ensure link editing tooltip is visible
    */
-  setMode(mode) {
+  setupTooltipPositionFix() {
+    if (!this.container || !this.quill) return;
+
+    // Check for tooltip and fix its position
+    const checkAndFixTooltip = () => {
+      // Quill may append tooltip to body or to the editor container
+      const tooltip = document.querySelector('.ql-tooltip');
+      if (tooltip && tooltip.offsetParent !== null) {
+        // Check if this tooltip belongs to our editor
+        const editorElement = this.container.querySelector('.notes-layer-quill-editor');
+        if (editorElement) {
+          // Check if tooltip is related to our editor
+          // Quill typically adds tooltip to body, so we check if our editor is focused/active
+          const isOurTooltip = tooltip.closest('.notes-layer-card-container') === this.container ||
+                               (document.body.contains(tooltip) && 
+                                (this.quill.hasFocus() || document.activeElement === editorElement));
+          
+          if (isOurTooltip) {
+            // Fix position with multiple attempts to ensure it works
+            this.fixTooltipPosition(tooltip);
+            // Re-check after a short delay to handle any layout changes
+            setTimeout(() => this.fixTooltipPosition(tooltip), 100);
+            setTimeout(() => this.fixTooltipPosition(tooltip), 300);
+          }
+        }
+      }
+    };
+
+    // Listen for selection changes (tooltip appears when link is clicked)
+    this.quill.on('selection-change', () => {
+      setTimeout(checkAndFixTooltip, 50);
+    });
+
+    // Use MutationObserver to detect when tooltip appears in DOM
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.classList && node.classList.contains('ql-tooltip')) {
+              setTimeout(() => this.fixTooltipPosition(node), 50);
+              setTimeout(() => this.fixTooltipPosition(node), 150);
+            }
+            // Also check for tooltip in added nodes
+            const tooltip = node.querySelector && node.querySelector('.ql-tooltip');
+            if (tooltip) {
+              setTimeout(() => this.fixTooltipPosition(tooltip), 50);
+              setTimeout(() => this.fixTooltipPosition(tooltip), 150);
+            }
+          }
+        });
+      });
+    });
+
+    // Observe both container and body (Quill may append tooltip to either)
+    observer.observe(this.container, {
+      childList: true,
+      subtree: true
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: false // Only direct children of body
+    });
+
+    // Fix position on window resize and scroll
+    const handleResize = () => {
+      checkAndFixTooltip();
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleResize, true);
+
+    // Store cleanup function
+    this._tooltipCleanup = () => {
+      observer.disconnect();
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleResize, true);
+    };
+
+    // Initial check
+    setTimeout(checkAndFixTooltip, 100);
+    setTimeout(checkAndFixTooltip, 300);
+  }
+
+  /**
+   * Fix tooltip position to ensure it's visible inside the note card, centered
+   */
+  fixTooltipPosition(tooltip) {
+    if (!tooltip || !this.container) return;
+
+    // Get editor container (where the text is)
+    const editorContainer = this.container.querySelector('.notes-layer-editor-container');
+    if (!editorContainer) return;
+
+    const containerRect = this.container.getBoundingClientRect();
+    
+    // Check if container is visible
+    if (containerRect.width === 0 || containerRect.height === 0) {
+      return; // Container is not visible
+    }
+    
+    // Force tooltip to be visible to measure it properly
+    const originalDisplay = tooltip.style.display;
+    const originalVisibility = tooltip.style.visibility;
+    tooltip.style.display = 'block';
+    tooltip.style.visibility = 'visible';
+    
+    // Get tooltip dimensions - measure after making it visible
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const tooltipWidth = tooltipRect.width || tooltip.offsetWidth || 350;
+    const tooltipHeight = tooltipRect.height || tooltip.offsetHeight || 60;
+    
+    const padding = 15; // Padding from edges of card
+
+    // Calculate centered position within the card container
+    // Center horizontally within the card
+    let left = containerRect.left + (containerRect.width / 2) - (tooltipWidth / 2);
+    
+    // Position vertically in the upper-middle part of the card body
+    // Get the body area (below header)
+    const cardBody = this.container.querySelector('.notes-layer-card-body');
+    const bodyRect = cardBody ? cardBody.getBoundingClientRect() : containerRect;
+    
+    // Position in upper part of body area
+    let top = bodyRect.top + padding + 20; // Start a bit below body top
+
+    // Ensure tooltip stays within container bounds (left edge)
+    const minLeft = containerRect.left + padding;
+    if (left < minLeft) {
+      left = minLeft;
+    }
+
+    // Ensure tooltip stays within container bounds (right edge)
+    const maxLeft = containerRect.right - tooltipWidth - padding;
+    if (left > maxLeft) {
+      left = Math.max(minLeft, maxLeft);
+    }
+
+    // Ensure tooltip stays within container bounds (top edge)
+    const minTop = containerRect.top + padding;
+    if (top < minTop) {
+      top = minTop;
+    }
+
+    // Ensure tooltip stays within container bounds (bottom edge)
+    const maxTop = containerRect.bottom - tooltipHeight - padding;
+    if (top > maxTop) {
+      top = Math.max(minTop, maxTop);
+    }
+
+    // Final viewport bounds check (safety check)
+    const viewportPadding = 5;
+    if (left < viewportPadding) {
+      left = viewportPadding;
+    }
+    if (left + tooltipWidth > window.innerWidth - viewportPadding) {
+      left = window.innerWidth - tooltipWidth - viewportPadding;
+    }
+    if (top < viewportPadding) {
+      top = viewportPadding;
+    }
+    if (top + tooltipHeight > window.innerHeight - viewportPadding) {
+      top = window.innerHeight - tooltipHeight - viewportPadding;
+    }
+
+    // Apply position - use fixed positioning relative to viewport
+    tooltip.style.position = 'fixed';
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.top = `${Math.round(top)}px`;
+    tooltip.style.zIndex = '100001';
+    tooltip.style.transform = 'none';
+    tooltip.style.margin = '0';
+    tooltip.style.right = 'auto';
+    tooltip.style.bottom = 'auto';
+    
+    // Restore original display/visibility if needed
+    if (originalDisplay) tooltip.style.display = originalDisplay;
+    if (originalVisibility) tooltip.style.visibility = originalVisibility;
+  }
+
+  /**
+   * Set mode (annotation or question)
+   * @param {string} mode - 'annotation' or 'question'
+   * @param {string} savedSelectedText - Optional: pre-saved selected text to insert into question field
+   */
+  setMode(mode, savedSelectedText = '') {
+    // If switching to question mode, check for selected text BEFORE switching
+    let selectedText = savedSelectedText;
+    
+    // If no saved text provided, try to get it now
+    if (!selectedText && mode === 'question' && this.quill) {
+      // First, try to get selection from DOM (more reliable for user selections)
+      const domSelection = window.getSelection();
+      if (domSelection && domSelection.rangeCount > 0) {
+        const range = domSelection.getRangeAt(0);
+        const quillEditor = this.container.querySelector('.notes-layer-quill-editor');
+        if (quillEditor && quillEditor.contains(range.commonAncestorContainer)) {
+          // Selection is inside Quill editor
+          selectedText = domSelection.toString().trim();
+        }
+      }
+      
+      // If no DOM selection, try Quill API
+      if (!selectedText) {
+        try {
+          const quillSelection = this.quill.getSelection();
+          if (quillSelection && quillSelection.length > 0) {
+            selectedText = this.quill.getText(quillSelection.index, quillSelection.length).trim();
+          }
+        } catch (error) {
+          console.warn('Error getting Quill selection:', error);
+        }
+      }
+    }
+
     this.mode = mode;
 
     const annotationMode = this.container.querySelector('.notes-layer-annotation-mode');
     const questionMode = this.container.querySelector('.notes-layer-question-mode');
-    const switchToQuestionBtn = this.container.querySelector('.notes-layer-switch-to-question');
     const switchToAnnotationBtn = this.container.querySelector('.notes-layer-switch-to-annotation');
     const acceptAnswerBtn = this.container.querySelector('.notes-layer-accept-answer');
     const deleteQuestionBtn = this.container.querySelector('.notes-layer-delete-question');
+    const backToAnnotationBtn = this.container.querySelector('.notes-layer-back-to-annotation-btn');
+    const askQuestionBtn = this.container.querySelector('.notes-layer-ask-question-btn');
     const modeLabel = this.container.querySelector('.notes-layer-card-mode');
 
     if (mode === 'annotation') {
       if (annotationMode) annotationMode.style.display = 'block';
       if (questionMode) questionMode.style.display = 'none';
-      if (switchToQuestionBtn) switchToQuestionBtn.style.display = 'inline-block';
       if (switchToAnnotationBtn) switchToAnnotationBtn.style.display = 'none';
       if (acceptAnswerBtn) acceptAnswerBtn.style.display = 'none';
       if (deleteQuestionBtn) deleteQuestionBtn.style.display = 'none';
+      if (backToAnnotationBtn) backToAnnotationBtn.style.display = 'none';
+      if (askQuestionBtn) askQuestionBtn.style.display = 'inline-flex';
       // Mode label is hidden - no longer needed
     } else {
       if (annotationMode) annotationMode.style.display = 'none';
       if (questionMode) questionMode.style.display = 'block';
-      if (switchToQuestionBtn) switchToQuestionBtn.style.display = 'none';
       if (switchToAnnotationBtn) switchToAnnotationBtn.style.display = 'inline-block';
+      if (backToAnnotationBtn) backToAnnotationBtn.style.display = 'inline-flex';
+      if (askQuestionBtn) askQuestionBtn.style.display = 'none';
       // Mode label is hidden - no longer needed
+
+      // Focus question input field when switching to question mode
+      const questionInput = this.container.querySelector('.notes-layer-question-input');
+      if (questionInput) {
+        // If we found selected text, insert it into question input field
+        if (selectedText) {
+          questionInput.value = selectedText;
+        }
+        
+        // Always focus the input field after a short delay to ensure DOM is updated
+        setTimeout(() => {
+          questionInput.focus();
+          // Select all text if there's text, otherwise just focus
+          if (questionInput.value) {
+            questionInput.select();
+          }
+        }, 50);
+      }
     }
   }
 
@@ -498,10 +817,66 @@ class NoteCard {
       closeBtn.addEventListener('click', () => this.close());
     }
 
-    // Switch to question mode
-    const switchToQuestionBtn = this.container.querySelector('.notes-layer-switch-to-question');
-    if (switchToQuestionBtn) {
-      switchToQuestionBtn.addEventListener('click', () => this.setMode('question'));
+    // Back to annotation button (visible only in question mode)
+    const backToAnnotationBtn = this.container.querySelector('.notes-layer-back-to-annotation-btn');
+    if (backToAnnotationBtn) {
+      backToAnnotationBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setMode('annotation');
+      });
+    }
+
+    // Ask question button (new small button in header)
+    const askQuestionBtn = this.container.querySelector('.notes-layer-ask-question-btn');
+    if (askQuestionBtn) {
+      let savedSelection = null;
+      
+      // Save selection on mousedown (before click loses it)
+      askQuestionBtn.addEventListener('mousedown', (e) => {
+        if (this.quill) {
+          // Try to save selection from DOM first
+          const domSelection = window.getSelection();
+          if (domSelection && domSelection.rangeCount > 0) {
+            const range = domSelection.getRangeAt(0);
+            const quillEditor = this.container.querySelector('.notes-layer-quill-editor');
+            if (quillEditor && quillEditor.contains(range.commonAncestorContainer)) {
+              savedSelection = domSelection.toString().trim();
+            }
+          }
+          
+          // If no DOM selection, try Quill API
+          if (!savedSelection) {
+            try {
+              const quillSelection = this.quill.getSelection();
+              if (quillSelection && quillSelection.length > 0) {
+                savedSelection = this.quill.getText(quillSelection.index, quillSelection.length).trim();
+              }
+            } catch (error) {
+              console.warn('Error getting Quill selection:', error);
+            }
+          }
+          
+          // Fallback to last tracked selection
+          if (!savedSelection && this.lastSelection) {
+            savedSelection = this.lastSelection;
+          }
+        }
+      });
+      
+      askQuestionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setMode('question', savedSelection || '');
+        savedSelection = null; // Clear after use
+      });
+    }
+
+    // Delete note button (new small button in header)
+    const deleteNoteBtn = this.container.querySelector('.notes-layer-delete-note-btn');
+    if (deleteNoteBtn) {
+      deleteNoteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteNote();
+      });
     }
 
     // Switch to annotation mode
@@ -510,10 +885,15 @@ class NoteCard {
       switchToAnnotationBtn.addEventListener('click', () => this.setMode('annotation'));
     }
 
-    // Ask question
-    const askBtn = this.container.querySelector('.notes-layer-ask-btn');
-    if (askBtn) {
-      askBtn.addEventListener('click', () => this.askQuestion());
+    // Ask question on Enter key press in input field
+    const questionInput = this.container.querySelector('.notes-layer-question-input');
+    if (questionInput) {
+      questionInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.askQuestion();
+        }
+      });
     }
 
     // Accept answer as annotation
@@ -526,12 +906,6 @@ class NoteCard {
     const deleteQuestionBtn = this.container.querySelector('.notes-layer-delete-question');
     if (deleteQuestionBtn) {
       deleteQuestionBtn.addEventListener('click', () => this.deleteQuestion());
-    }
-
-    // Delete note
-    const deleteNoteBtn = this.container.querySelector('.notes-layer-delete-note');
-    if (deleteNoteBtn) {
-      deleteNoteBtn.addEventListener('click', () => this.deleteNote());
     }
 
     // Re-anchor note
@@ -687,12 +1061,10 @@ class NoteCard {
       return;
     }
 
-    // Show loading
-    const askBtn = this.container.querySelector('.notes-layer-ask-btn');
-    const originalText = askBtn?.textContent;
-    if (askBtn) {
-      askBtn.textContent = 'Loading...';
-      askBtn.disabled = true;
+    // Show loading - disable input while processing
+    if (questionInput) {
+      questionInput.disabled = true;
+      questionInput.placeholder = 'Loading...';
     }
 
     try {
@@ -833,9 +1205,10 @@ class NoteCard {
       
       alert(userMessage);
     } finally {
-      if (askBtn) {
-        askBtn.textContent = originalText;
-        askBtn.disabled = false;
+      // Restore input field
+      if (questionInput) {
+        questionInput.disabled = false;
+        questionInput.placeholder = 'Enter your question...';
       }
     }
   }
@@ -858,6 +1231,34 @@ class NoteCard {
         // Extract title from question (first 60 characters)
         note.title = question ? question.substring(0, 60).trim() : 'question';
         note.updatedAt = Date.now();
+
+        // Save link with query in annotationContent (shortened text, but as link)
+        if (this.quill && question) {
+          // Create Google Search URL with query
+          const query = encodeURIComponent(`Кратко и понятно объясни: ${question}`);
+          const searchUrl = `https://www.google.com/ai?q=${query}`;
+          
+          // Get current content length
+          const currentLength = this.quill.getLength();
+          
+          // Insert newline if there's existing content
+          let insertIndex = currentLength - 1;
+          if (currentLength > 1) {
+            this.quill.insertText(insertIndex, '\n', 'user');
+            insertIndex = this.quill.getLength() - 1; // Update index after inserting newline
+          }
+          
+          // Insert link with shortened text (just the question text)
+          // Quill uses Delta format for links - insert text and then format it as link
+          const linkText = question.length > 60 ? question.substring(0, 60) + '...' : question;
+          this.quill.insertText(insertIndex, linkText, 'user');
+          
+          // Format the inserted text as a link
+          this.quill.formatText(insertIndex, linkText.length, 'link', searchUrl);
+          
+          // Save annotation with the link
+          await this.saveAnnotation();
+        }
 
         await safeSendMessage({
           action: 'saveNote',
@@ -997,6 +1398,12 @@ class NoteCard {
    * Close card
    */
   close() {
+    // Clean up tooltip position fix listeners
+    if (this._tooltipCleanup) {
+      this._tooltipCleanup();
+      this._tooltipCleanup = null;
+    }
+
     // Dispatch event to notify that card is closing
     if (this.noteId) {
       const event = new CustomEvent('notes-layer-card-closed', {

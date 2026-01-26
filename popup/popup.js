@@ -108,6 +108,21 @@ function renderPages() {
       await deleteNoteFromPopup(noteId);
     });
   });
+
+  // Setup double-click on URL to open in new tab
+  pagesList.querySelectorAll('.page-item-url').forEach(urlElement => {
+    urlElement.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const url = urlElement.textContent.trim();
+      if (url) {
+        chrome.tabs.create({ url: url });
+      }
+    });
+    
+    // Add visual feedback on hover
+    urlElement.style.cursor = 'pointer';
+    urlElement.title = 'Double-click to open in new tab';
+  });
 }
 
 /**
@@ -369,6 +384,27 @@ function renderSearchResults(notes, query) {
         await performSearch(currentSearchQuery);
       }
     });
+  });
+
+  // Setup double-click on URL in search results to open in new tab
+  searchResults.querySelectorAll('.search-result-page').forEach(pageElement => {
+    // Extract URL from the text (format: "Title - URL")
+    pageElement.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const text = pageElement.textContent.trim();
+      // Extract URL (everything after " - ")
+      const urlMatch = text.match(/ - (.+)$/);
+      if (urlMatch && urlMatch[1]) {
+        const url = urlMatch[1].trim();
+        if (url) {
+          chrome.tabs.create({ url: url });
+        }
+      }
+    });
+    
+    // Add visual feedback on hover
+    pageElement.style.cursor = 'pointer';
+    pageElement.title = 'Double-click to open URL in new tab';
   });
 }
 
