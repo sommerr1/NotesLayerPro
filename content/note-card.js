@@ -42,6 +42,33 @@ class NoteCard {
     this.container = null;
     this.mode = noteData?.type || 'annotation'; // 'annotation' or 'question'
     this.warningLevel = noteData?.warningLevel || 'none';
+    
+    // Drag & drop state
+    this.isDragging = false;
+    this._justFinishedDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+    this.initialX = 0;
+    this.initialY = 0;
+    this.cardWidth = 0;
+    this.cardHeight = 0;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+    this.dragAnimationFrame = null;
+
+    // Resize state
+    this.isResizing = false;
+    this.resizeStartX = 0;
+    this.resizeStartY = 0;
+    this.resizeStartWidth = 0;
+    this.resizeStartHeight = 0;
+    this.lastResizeMouseX = 0;
+    this.lastResizeMouseY = 0;
+    this.resizeAnimationFrame = null;
+    
+    // Connection line
+    this.connectionLine = null;
+    this.lineUpdateAnimationFrame = null;
   }
 
   /**
@@ -66,12 +93,52 @@ class NoteCard {
       this.container.classList.add('notes-layer-warning-red');
     }
 
-    // Position card
-    this.container.style.left = `${position.x}px`;
-    this.container.style.top = `${position.y}px`;
+    // Position card (document coordinates)
+    const scroll = this._getScrollXY ? this._getScrollXY() : { x: window.scrollX || 0, y: window.scrollY || 0 };
+    const highlightDoc = this._getHighlightDocRect ? this._getHighlightDocRect() : null;
+
+    let docLeft = Number(position?.x) || 0;
+    let docTop = Number(position?.y) || 0;
+
+    if (this.noteData) {
+      const offsetX = Number(this.noteData.offsetX);
+      const offsetY = Number(this.noteData.offsetY);
+
+      if (Number.isFinite(offsetX) && Number.isFinite(offsetY) && highlightDoc) {
+        docLeft = highlightDoc.left + offsetX;
+        docTop = highlightDoc.top + offsetY;
+      } else if (this.noteData.positionX !== undefined && this.noteData.positionY !== undefined) {
+        // Legacy: saved as viewport coords when card was `position: fixed`
+        const legacyViewportX = Number(this.noteData.positionX);
+        const legacyViewportY = Number(this.noteData.positionY);
+        if (Number.isFinite(legacyViewportX) && Number.isFinite(legacyViewportY)) {
+          docLeft = legacyViewportX + scroll.x;
+          docTop = legacyViewportY + scroll.y;
+        }
+      }
+    }
+
+    this.container.style.left = `${docLeft}px`;
+    this.container.style.top = `${docTop}px`;
+
+    // Apply saved size (if any)
+    if (this.noteData) {
+      const savedW = Number(this.noteData.cardWidth);
+      const savedH = Number(this.noteData.cardHeight);
+      if (Number.isFinite(savedW) && savedW > 0) {
+        this.container.style.width = `${savedW}px`;
+      }
+      if (Number.isFinite(savedH) && savedH > 0) {
+        this.container.style.height = `${savedH}px`;
+      }
+    }
 
     // Append to body
     document.body.appendChild(this.container);
+
+    // Keep card positioned relative to highlight (and migrate legacy positions if needed)
+    this.setupScrollTracking();
+    this.updatePosition();
 
     // Initialize Quill editor
     await this.initQuill();
@@ -83,6 +150,20 @@ class NoteCard {
 
     // Setup event listeners
     this.setupEventListeners();
+    
+    // Setup drag and drop
+    this.setupDragAndDrop();
+
+    // Setup resize (bottom-right handle)
+    this.setupResize();
+    
+    // Show connection line after card is created (if not dragging)
+    // Use setTimeout to ensure card is fully rendered
+    setTimeout(() => {
+      if (!this.isDragging) {
+        this.showConnectionLine();
+      }
+    }, 100);
 
     // Set initial mode
     this.setMode(this.mode);
@@ -924,10 +1005,17 @@ class NoteCard {
     }
 
     // Close on outside click
-    document.addEventListener('click', (e) => {
+    // Store reference to handler for cleanup
+    this._outsideClickHandler = (e) => {
+      // Don't close if we're dragging or just finished dragging
+      if (this.isDragging || this._justFinishedDragging) {
+        return;
+      }
+      
       if (this.container && !this.container.contains(e.target)) {
-        // Don't close if clicking on marker
-        if (!e.target.classList.contains('notes-layer-marker')) {
+        // Don't close if clicking on marker or connection line
+        if (!e.target.classList.contains('notes-layer-marker') &&
+            !e.target.closest('.notes-layer-connection-line')) {
           // Small delay to allow marker clicks to work
           setTimeout(() => {
             if (this.container && !document.querySelector('.notes-layer-marker:hover')) {
@@ -936,7 +1024,701 @@ class NoteCard {
           }, 100);
         }
       }
+    };
+    document.addEventListener('click', this._outsideClickHandler, true);
+  }
+
+  /**
+   * Setup drag and drop functionality
+   */
+  setupDragAndDrop() {
+    const header = this.container.querySelector('.notes-layer-card-header');
+    if (!header) return;
+
+    header.addEventListener('mousedown', (e) => {
+      // Don't start drag if clicking on buttons, interactive elements, or editable title
+      const target = e.target;
+      if (
+        target.closest('button') || 
+        target.closest('.notes-layer-card-edit-title') ||
+        target.closest('.notes-layer-card-title.editing') ||
+        (target.classList.contains('notes-layer-card-title') && target.contentEditable === 'true')
+      ) {
+        return;
+      }
+
+      // Start drag immediately
+      this.startDrag(e);
+    }, true); // Use capture phase to run before other handlers
+  }
+
+  /**
+   * Setup resize interactions via bottom-right handle
+   */
+  setupResize() {
+    const handle = this.container.querySelector('.notes-layer-resize-handle');
+    if (!handle) return;
+
+    handle.addEventListener('mousedown', (e) => {
+      this.startResize(e);
     }, true);
+  }
+
+  /**
+   * Start resizing the card
+   */
+  startResize(e) {
+    if (this.isResizing) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    // Cancel any pending resize RAF
+    if (this.resizeAnimationFrame) {
+      cancelAnimationFrame(this.resizeAnimationFrame);
+      this.resizeAnimationFrame = null;
+    }
+
+    this.isResizing = true;
+
+    const rect = this.container.getBoundingClientRect();
+    this.resizeStartWidth = rect.width;
+    this.resizeStartHeight = rect.height;
+    this.resizeStartX = e.clientX;
+    this.resizeStartY = e.clientY;
+    this.lastResizeMouseX = e.clientX;
+    this.lastResizeMouseY = e.clientY;
+
+    // UX: keep cursor consistent while resizing
+    this._prevBodyCursor = document.body.style.cursor;
+    document.body.style.cursor = 'nwse-resize';
+
+    // Hide connection line during resizing for smoother feel
+    this.hideConnectionLine();
+
+    document.addEventListener('mousemove', this.onResizeBound = this.onResize.bind(this), { capture: true, passive: false });
+    document.addEventListener('mouseup', this.endResizeBound = this.endResize.bind(this), { capture: true, passive: false });
+
+    window.addEventListener('mousemove', this.onResizeBound, { capture: true, passive: false });
+    window.addEventListener('mouseup', this.endResizeBound, { capture: true, passive: false });
+    window.addEventListener('blur', this.endResizeBound, { capture: true, passive: false });
+  }
+
+  /**
+   * Handle resize movement
+   */
+  onResize(e) {
+    if (!this.isResizing) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    this.lastResizeMouseX = e.clientX;
+    this.lastResizeMouseY = e.clientY;
+
+    // Update immediately for responsiveness
+    this._updateResizeSize();
+
+    // Also schedule RAF update to catch missed frames
+    if (!this.resizeAnimationFrame) {
+      this.resizeAnimationFrame = requestAnimationFrame(() => {
+        this.resizeAnimationFrame = null;
+        if (this.isResizing) {
+          this._updateResizeSize();
+        }
+      });
+    }
+  }
+
+  /**
+   * Apply computed size to card
+   */
+  _updateResizeSize() {
+    if (!this.isResizing) return;
+
+    const dx = this.lastResizeMouseX - this.resizeStartX;
+    const dy = this.lastResizeMouseY - this.resizeStartY;
+
+    const computed = window.getComputedStyle(this.container);
+    const minW = Number.parseFloat(computed.minWidth) || 300;
+    const minH = Number.parseFloat(computed.minHeight) || 180;
+
+    // Respect CSS max-* when present; also constrain to viewport
+    const cssMaxW = Number.parseFloat(computed.maxWidth);
+    const cssMaxH = Number.parseFloat(computed.maxHeight);
+
+    const rect = this.container.getBoundingClientRect();
+    const viewportMaxW = Math.max(minW, window.innerWidth - rect.left - 8);
+    const viewportMaxH = Math.max(minH, window.innerHeight - rect.top - 8);
+
+    const maxW = Number.isFinite(cssMaxW) ? Math.min(cssMaxW, viewportMaxW) : viewportMaxW;
+    const maxH = Number.isFinite(cssMaxH) ? Math.min(cssMaxH, viewportMaxH) : viewportMaxH;
+
+    const newW = Math.max(minW, Math.min(this.resizeStartWidth + dx, maxW));
+    const newH = Math.max(minH, Math.min(this.resizeStartHeight + dy, maxH));
+
+    this.container.style.width = `${newW}px`;
+    this.container.style.height = `${newH}px`;
+  }
+
+  /**
+   * End resizing
+   */
+  endResize(e) {
+    if (!this.isResizing) return;
+
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (this.resizeAnimationFrame) {
+      cancelAnimationFrame(this.resizeAnimationFrame);
+      this.resizeAnimationFrame = null;
+    }
+
+    // Final update to the latest mouse position
+    this._updateResizeSize();
+
+    this.isResizing = false;
+
+    // Restore cursor
+    document.body.style.cursor = this._prevBodyCursor || '';
+    this._prevBodyCursor = undefined;
+
+    // Remove global listeners
+    if (this.onResizeBound) {
+      document.removeEventListener('mousemove', this.onResizeBound, { capture: true });
+      window.removeEventListener('mousemove', this.onResizeBound, { capture: true });
+      this.onResizeBound = null;
+    }
+    if (this.endResizeBound) {
+      document.removeEventListener('mouseup', this.endResizeBound, { capture: true });
+      window.removeEventListener('mouseup', this.endResizeBound, { capture: true });
+      window.removeEventListener('blur', this.endResizeBound, { capture: true });
+      this.endResizeBound = null;
+    }
+
+    // Show connection line after resize ends
+    setTimeout(() => {
+      if (!this.isDragging && !this.isResizing) {
+        this.showConnectionLine();
+      }
+    }, 150);
+
+    // Save size (async; no need to block UI)
+    try {
+      const rect = this.container.getBoundingClientRect();
+      this.saveSize(Math.round(rect.width), Math.round(rect.height));
+    } catch (error) {
+      console.error('Error reading size for save:', error);
+    }
+  }
+
+  /**
+   * Save card size to database
+   */
+  async saveSize(width, height) {
+    try {
+      const response = await safeSendMessage({
+        action: 'getNoteById',
+        noteId: this.noteId
+      });
+
+      if (response.success && response.note) {
+        const note = response.note;
+        note.cardWidth = width;
+        note.cardHeight = height;
+        note.updatedAt = Date.now();
+
+        await safeSendMessage({
+          action: 'saveNote',
+          note
+        });
+
+        // Update local note data
+        if (this.noteData) {
+          this.noteData.cardWidth = width;
+          this.noteData.cardHeight = height;
+        }
+
+        console.log('Note size saved:', { width, height });
+      }
+    } catch (error) {
+      console.error('Error saving note size:', error);
+    }
+  }
+
+  /**
+   * Start dragging the card
+   */
+  startDrag(e) {
+    // Prevent default behavior and stop propagation
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation(); // Prevent other handlers from running
+    
+    // Clear any pending line show timeout
+    if (this._showLineTimeout) {
+      clearTimeout(this._showLineTimeout);
+      this._showLineTimeout = null;
+    }
+    
+    // Cancel any pending animation frame
+    if (this.dragAnimationFrame) {
+      cancelAnimationFrame(this.dragAnimationFrame);
+      this.dragAnimationFrame = null;
+    }
+    
+    this.isDragging = true;
+    this._justFinishedDragging = false; // Clear flag when starting new drag
+    this.container.classList.add('notes-layer-dragging');
+    
+    const rect = this.container.getBoundingClientRect();
+    // Store initial position in *document* coordinates (since card is `position: absolute`)
+    const scroll = this._getScrollXY();
+    this.initialX = rect.left + scroll.x;
+    this.initialY = rect.top + scroll.y;
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+    
+    // Cache card dimensions to avoid expensive getBoundingClientRect calls during drag
+    this.cardWidth = rect.width;
+    this.cardHeight = rect.height;
+    
+    // Initialize final position
+    this._finalX = this.initialX;
+    this._finalY = this.initialY;
+
+    // Hide connection line during dragging
+    this.hideConnectionLine();
+
+    // Enable will-change for better performance during drag
+    this.container.style.willChange = 'transform';
+
+    // Add global event listeners with capture to ensure they fire
+    // Use passive: false to allow preventDefault
+    document.addEventListener('mousemove', this.onDragBound = this.onDrag.bind(this), { capture: true, passive: false });
+    document.addEventListener('mouseup', this.endDragBound = this.endDrag.bind(this), { capture: true, passive: false });
+    
+    // Listen on window for better tracking when mouse leaves document
+    window.addEventListener('mousemove', this.onDragBound, { capture: true, passive: false });
+    window.addEventListener('mouseup', this.endDragBound, { capture: true, passive: false });
+    window.addEventListener('blur', this.endDragBound, { capture: true, passive: false });
+    
+    // Handle mouse leaving window - only end drag if mouse actually leaves the viewport
+    this.windowMouseoutBound = (e) => {
+      // Check if mouse coordinates are outside viewport bounds
+      if (e.clientX <= 0 || e.clientY <= 0 || 
+          e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        this.endDrag(e);
+      }
+    };
+    window.addEventListener('mouseout', this.windowMouseoutBound, { capture: true, passive: false });
+  }
+
+  /**
+   * Handle drag movement
+   */
+  onDrag(e) {
+    if (!this.isDragging) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation(); // Prevent other handlers from interfering
+
+    // Store latest mouse coordinates immediately
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+
+    // Update position immediately for responsiveness, but also schedule RAF for smooth rendering
+    this._updateDragPosition();
+
+    // Also schedule RAF update to catch any missed frames
+    if (!this.dragAnimationFrame) {
+      this.dragAnimationFrame = requestAnimationFrame(() => {
+        this.dragAnimationFrame = null;
+        // Update again with latest coordinates in case we missed some events
+        if (this.isDragging) {
+          this._updateDragPosition();
+        }
+      });
+    }
+  }
+
+  /**
+   * Update drag position
+   */
+  _updateDragPosition() {
+    if (!this.isDragging) return;
+
+    const deltaX = this.lastMouseX - this.dragStartX;
+    const deltaY = this.lastMouseY - this.dragStartY;
+
+    let newX = this.initialX + deltaX;
+    let newY = this.initialY + deltaY;
+
+    // Constrain to current viewport bounds (in document coordinates)
+    const scroll = this._getScrollXY();
+    const minX = scroll.x;
+    const minY = scroll.y;
+    const maxX = scroll.x + window.innerWidth - this.cardWidth;
+    const maxY = scroll.y + window.innerHeight - this.cardHeight;
+    newX = Math.max(minX, Math.min(newX, maxX));
+    newY = Math.max(minY, Math.min(newY, maxY));
+
+    // Disable transitions and use transform for smooth GPU-accelerated dragging
+    this.container.style.transition = 'none';
+    this.container.style.willChange = 'transform';
+    
+    // Use transform for smooth dragging (better performance, GPU accelerated)
+    // Calculate offset from initial position
+    const offsetX = newX - this.initialX;
+    const offsetY = newY - this.initialY;
+    this.container.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+
+    // Store final position for when drag ends (but don't apply left/top during drag to avoid conflicts)
+    this._finalX = newX;
+    this._finalY = newY;
+
+    // Don't update connection line during dragging - it will be shown after drag ends
+  }
+
+  /**
+   * End dragging and save position
+   */
+  async endDrag(e) {
+    if (!this.isDragging) return;
+    
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Cancel any pending animation frame
+    if (this.dragAnimationFrame) {
+      cancelAnimationFrame(this.dragAnimationFrame);
+      this.dragAnimationFrame = null;
+    }
+
+    // Final position update to ensure we're at the latest mouse position
+    this._updateDragPosition();
+
+    // Remove transform and apply final left/top position
+    const finalX = this._finalX !== undefined ? this._finalX : this.initialX;
+    const finalY = this._finalY !== undefined ? this._finalY : this.initialY;
+    
+    this.container.style.transform = 'none';
+    this.container.style.willChange = 'auto';
+    this.container.style.left = `${finalX}px`;
+    this.container.style.top = `${finalY}px`;
+
+    this.isDragging = false;
+    this._justFinishedDragging = true; // Flag to prevent immediate close
+    this.container.classList.remove('notes-layer-dragging');
+    
+    // Restore transitions after dragging
+    this.container.style.transition = '';
+
+    // Remove global event listeners from both document and window
+    if (this.onDragBound) {
+      document.removeEventListener('mousemove', this.onDragBound, { capture: true });
+      window.removeEventListener('mousemove', this.onDragBound, { capture: true });
+      this.onDragBound = null;
+    }
+    if (this.endDragBound) {
+      document.removeEventListener('mouseup', this.endDragBound, { capture: true });
+      window.removeEventListener('mouseup', this.endDragBound, { capture: true });
+      window.removeEventListener('blur', this.endDragBound, { capture: true });
+      this.endDragBound = null;
+    }
+    if (this.windowMouseoutBound) {
+      window.removeEventListener('mouseout', this.windowMouseoutBound, { capture: true });
+      this.windowMouseoutBound = null;
+    }
+
+    // Save position as offset relative to highlight
+    const highlightDoc = this._getHighlightDocRect();
+    if (highlightDoc) {
+      const offsetX = finalX - highlightDoc.left;
+      const offsetY = finalY - highlightDoc.top;
+      await this.savePosition(offsetX, offsetY);
+    } else {
+      // If highlight is missing, keep runtime offset only (cannot anchor)
+      this._runtimeOffsetX = undefined;
+      this._runtimeOffsetY = undefined;
+    }
+    
+    // Clear cached dimensions and final position
+    this.cardWidth = 0;
+    this.cardHeight = 0;
+    this._finalX = undefined;
+    this._finalY = undefined;
+    
+    // Clear the flag after a short delay to allow normal click handling
+    setTimeout(() => {
+      this._justFinishedDragging = false;
+    }, 200);
+    
+    // Show connection line after 0.5 seconds delay
+    // Clear any existing timeout
+    if (this._showLineTimeout) {
+      clearTimeout(this._showLineTimeout);
+    }
+    this._showLineTimeout = setTimeout(() => {
+      if (!this.isDragging) {
+        this.showConnectionLine();
+      }
+      this._showLineTimeout = null;
+    }, 500);
+  }
+
+  /**
+   * Save card position to database
+   */
+  async savePosition(offsetX, offsetY) {
+    try {
+      const response = await safeSendMessage({
+        action: 'getNoteById',
+        noteId: this.noteId
+      });
+
+      if (response.success && response.note) {
+        const note = response.note;
+        note.offsetX = offsetX;
+        note.offsetY = offsetY;
+        // Clear legacy fields (viewport-based) to avoid ambiguity
+        try {
+          delete note.positionX;
+          delete note.positionY;
+        } catch (e) {
+          // ignore
+        }
+        note.updatedAt = Date.now();
+
+        await safeSendMessage({
+          action: 'saveNote',
+          note
+        });
+
+        // Update local note data
+        if (this.noteData) {
+          this.noteData.offsetX = offsetX;
+          this.noteData.offsetY = offsetY;
+          try {
+            delete this.noteData.positionX;
+            delete this.noteData.positionY;
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        console.log('Note position saved (offset):', { offsetX, offsetY });
+      }
+    } catch (error) {
+      console.error('Error saving note position:', error);
+    }
+  }
+
+  /**
+   * Create connection line SVG element
+   */
+  createConnectionLine() {
+    if (this.connectionLine) {
+      return; // Already created
+    }
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    // Use setAttribute for SVG elements instead of className
+    svg.setAttribute('class', 'notes-layer-connection-line');
+    svg.style.position = 'fixed';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.style.zIndex = '99999';
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linecap', 'round');
+    
+    // Set color based on warning level
+    let strokeColor = '#4a90e2'; // Default blue
+    if (this.warningLevel === 'yellow') {
+      strokeColor = '#ffa500';
+    } else if (this.warningLevel === 'red') {
+      strokeColor = '#ff4444';
+    }
+    path.setAttribute('stroke', strokeColor);
+    path.setAttribute('opacity', '0.6');
+    
+    svg.appendChild(path);
+    document.body.appendChild(svg);
+    
+    this.connectionLine = { svg, path };
+  }
+
+  /**
+   * Show connection line (when card is not being dragged)
+   */
+  showConnectionLine() {
+    // Don't show line during dragging
+    if (this.isDragging) {
+      return;
+    }
+    
+    if (!this.connectionLine) {
+      this.createConnectionLine();
+    }
+    if (this.connectionLine && this.connectionLine.svg) {
+      this.connectionLine.svg.style.display = 'block';
+      this.updateConnectionLine();
+      
+      // Setup scroll and resize listeners for line updates
+      if (!this._scrollListener) {
+        this._scrollListener = () => {
+          // Only update if not dragging
+          if (!this.isDragging && this.connectionLine) {
+            this.updateConnectionLine();
+          }
+        };
+        window.addEventListener('scroll', this._scrollListener, true);
+        window.addEventListener('resize', this._scrollListener);
+      }
+    }
+  }
+
+  /**
+   * Hide connection line
+   */
+  hideConnectionLine() {
+    if (this.connectionLine && this.connectionLine.svg) {
+      this.connectionLine.svg.style.display = 'none';
+    }
+    if (this.lineUpdateAnimationFrame) {
+      cancelAnimationFrame(this.lineUpdateAnimationFrame);
+      this.lineUpdateAnimationFrame = null;
+    }
+    
+    // Remove scroll and resize listeners
+    if (this._scrollListener) {
+      window.removeEventListener('scroll', this._scrollListener, true);
+      window.removeEventListener('resize', this._scrollListener);
+      this._scrollListener = null;
+    }
+  }
+
+  /**
+   * Update connection line position
+   */
+  updateConnectionLine() {
+    if (!this.connectionLine || !this.connectionLine.path) {
+      return;
+    }
+
+    // Cancel previous animation frame if any
+    if (this.lineUpdateAnimationFrame) {
+      cancelAnimationFrame(this.lineUpdateAnimationFrame);
+    }
+
+    // Use requestAnimationFrame for smooth updates
+    this.lineUpdateAnimationFrame = requestAnimationFrame(() => {
+      this._updateConnectionLinePath();
+    });
+  }
+
+  /**
+   * Update the actual path of the connection line
+   */
+  _updateConnectionLinePath() {
+    if (!this.connectionLine || !this.connectionLine.path) {
+      return;
+    }
+
+    // Find highlight element
+    const highlightElement = this.findHighlightElement();
+    if (!highlightElement) {
+      // No highlight found, hide line
+      if (this.connectionLine.svg) {
+        this.connectionLine.svg.style.display = 'none';
+      }
+      return;
+    }
+
+    // Get card position
+    const cardRect = this.container.getBoundingClientRect();
+    const cardCenterX = cardRect.left + cardRect.width / 2;
+    const cardCenterY = cardRect.top + cardRect.height / 2;
+
+    // Get highlight position
+    const highlightRect = highlightElement.getBoundingClientRect();
+    const highlightCenterX = highlightRect.left + highlightRect.width / 2;
+    const highlightCenterY = highlightRect.top + highlightRect.height / 2;
+
+    // Calculate connection points
+    // Start from highlight center
+    const startX = highlightCenterX;
+    const startY = highlightCenterY;
+
+    // End at card edge (closest point to highlight)
+    let endX, endY;
+    const dx = cardCenterX - highlightCenterX;
+    const dy = cardCenterY - highlightCenterY;
+    const angle = Math.atan2(dy, dx);
+
+    // Find intersection point with card rectangle
+    const halfWidth = cardRect.width / 2;
+    const halfHeight = cardRect.height / 2;
+
+    // Calculate which edge to connect to
+    const tan = Math.abs(dy / dx);
+    const cardTan = halfHeight / halfWidth;
+
+    if (tan < cardTan) {
+      // Connect to left or right edge
+      endX = dx > 0 ? cardRect.left : cardRect.right;
+      endY = cardCenterY + (endX - cardCenterX) * Math.tan(angle);
+    } else {
+      // Connect to top or bottom edge
+      endY = dy > 0 ? cardRect.top : cardRect.bottom;
+      endX = cardCenterX + (endY - cardCenterY) / Math.tan(angle);
+    }
+
+    // Control points for Bezier curve
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const controlOffset = Math.min(distance * 0.3, 100);
+
+    const controlX1 = startX + controlOffset * Math.cos(angle);
+    const controlY1 = startY + controlOffset * Math.sin(angle);
+    const controlX2 = endX - controlOffset * Math.cos(angle);
+    const controlY2 = endY - controlOffset * Math.sin(angle);
+
+    // Create Bezier curve path
+    const pathData = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
+    this.connectionLine.path.setAttribute('d', pathData);
+  }
+
+  /**
+   * Find highlight element for this note
+   */
+  findHighlightElement() {
+    // Try to find through highlighter instance (if available globally)
+    if (typeof Highlighter !== 'undefined' && window.notesLayerContent?.highlighter) {
+      const highlight = window.notesLayerContent.highlighter.getHighlight(this.noteId);
+      if (highlight) {
+        return highlight.element || (highlight.elements && highlight.elements[0]) || null;
+      }
+    }
+
+    // Fallback: find via DOM
+    const highlightElement = document.querySelector(`.notes-layer-highlight[data-note-id="${this.noteId}"]`);
+    return highlightElement || null;
   }
 
   /**
@@ -1404,6 +2186,54 @@ class NoteCard {
       this._tooltipCleanup = null;
     }
 
+    // Clean up drag & drop
+    if (this.isDragging) {
+      this.endDrag();
+    }
+    
+    // Cancel any pending drag animation frame
+    if (this.dragAnimationFrame) {
+      cancelAnimationFrame(this.dragAnimationFrame);
+      this.dragAnimationFrame = null;
+    }
+    
+    // Clear line show timeout
+    if (this._showLineTimeout) {
+      clearTimeout(this._showLineTimeout);
+      this._showLineTimeout = null;
+    }
+    
+    // Remove outside click handler
+    if (this._outsideClickHandler) {
+      document.removeEventListener('click', this._outsideClickHandler, true);
+      this._outsideClickHandler = null;
+    }
+
+    // Remove connection line
+    this.hideConnectionLine();
+    if (this.connectionLine && this.connectionLine.svg && this.connectionLine.svg.parentNode) {
+      this.connectionLine.svg.parentNode.removeChild(this.connectionLine.svg);
+    }
+    this.connectionLine = null;
+    
+    // Clean up scroll listener if still exists
+    if (this._scrollListener) {
+      window.removeEventListener('scroll', this._scrollListener, true);
+      window.removeEventListener('resize', this._scrollListener);
+      this._scrollListener = null;
+    }
+
+    // Clean up anchor tracking listeners (card follows highlight)
+    if (this._anchorScrollListener) {
+      window.removeEventListener('scroll', this._anchorScrollListener, true);
+      window.removeEventListener('resize', this._anchorScrollListener);
+      this._anchorScrollListener = null;
+    }
+    if (this._anchorTrackingRaf) {
+      cancelAnimationFrame(this._anchorTrackingRaf);
+      this._anchorTrackingRaf = null;
+    }
+
     // Dispatch event to notify that card is closing
     if (this.noteId) {
       const event = new CustomEvent('notes-layer-card-closed', {
@@ -1420,12 +2250,131 @@ class NoteCard {
   }
 
   /**
-   * Update position
+   * Setup scroll/resize tracking so the card follows the highlight.
+   * With `position: absolute`, the card will naturally move with the page,
+   * but this keeps the anchor-relative offset consistent if layout shifts.
+   */
+  setupScrollTracking() {
+    if (this._anchorScrollListener) return;
+
+    this._anchorScrollListener = () => {
+      if (this.isDragging || this.isResizing) return;
+
+      if (this._anchorTrackingRaf) return;
+      this._anchorTrackingRaf = requestAnimationFrame(() => {
+        this._anchorTrackingRaf = null;
+        this.updatePosition();
+      });
+    };
+
+    window.addEventListener('scroll', this._anchorScrollListener, true);
+    window.addEventListener('resize', this._anchorScrollListener);
+  }
+
+  _getScrollXY() {
+    return {
+      x: window.scrollX || window.pageXOffset || 0,
+      y: window.scrollY || window.pageYOffset || 0
+    };
+  }
+
+  _getHighlightDocRect() {
+    const highlightElement = this.findHighlightElement();
+    if (!highlightElement) return null;
+
+    const r = highlightElement.getBoundingClientRect();
+    const s = this._getScrollXY();
+    return {
+      left: r.left + s.x,
+      top: r.top + s.y,
+      right: r.right + s.x,
+      bottom: r.bottom + s.y,
+      width: r.width,
+      height: r.height
+    };
+  }
+
+  _getCardDocLeftTop() {
+    if (!this.container) return null;
+
+    const r = this.container.getBoundingClientRect();
+    const s = this._getScrollXY();
+    return { left: r.left + s.x, top: r.top + s.y, width: r.width, height: r.height };
+  }
+
+  /**
+   * Update card position.
+   * - If called with (x,y): set absolute document position directly.
+   * - If called without args: position relative to highlight using saved offsets.
    */
   updatePosition(x, y) {
-    if (this.container) {
+    if (!this.container) return;
+
+    // Backward-compatible direct set
+    if (Number.isFinite(x) && Number.isFinite(y)) {
       this.container.style.left = `${x}px`;
       this.container.style.top = `${y}px`;
+      return;
     }
+
+    if (this.isDragging || this.isResizing) return;
+
+    const highlightDoc = this._getHighlightDocRect();
+    if (!highlightDoc) return;
+
+    // Determine offsets
+    let offsetX = this.noteData ? Number(this.noteData.offsetX) : NaN;
+    let offsetY = this.noteData ? Number(this.noteData.offsetY) : NaN;
+
+    // Legacy migration path: positionX/positionY were viewport coords (fixed positioning)
+    if ((!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) && this.noteData &&
+        this.noteData.positionX !== undefined && this.noteData.positionY !== undefined) {
+      const s = this._getScrollXY();
+      const legacyViewportX = Number(this.noteData.positionX);
+      const legacyViewportY = Number(this.noteData.positionY);
+      const legacyDocX = legacyViewportX + s.x;
+      const legacyDocY = legacyViewportY + s.y;
+
+      offsetX = legacyDocX - highlightDoc.left;
+      offsetY = legacyDocY - highlightDoc.top;
+
+      // Save migrated offsets (async, don't block UI)
+      this.savePosition(offsetX, offsetY);
+    }
+
+    // If still no offsets, derive runtime offsets from current card position
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      const cardDoc = this._getCardDocLeftTop();
+      if (!cardDoc) return;
+      offsetX = cardDoc.left - highlightDoc.left;
+      offsetY = cardDoc.top - highlightDoc.top;
+
+      // Persist computed offsets for new notes so subsequent scrolls use stable values
+      if (this.noteData && this.noteData.offsetX === undefined && this.noteData.offsetY === undefined) {
+        try {
+          // Async, fire-and-forget
+          this.savePosition(offsetX, offsetY);
+        } catch (err) {
+          console.error('Error saving computed offset:', err);
+        }
+      }
+
+      this._runtimeOffsetX = offsetX;
+      this._runtimeOffsetY = offsetY;
+    }
+
+    // Use runtime offsets if present and noteData is missing
+    if ((!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) &&
+        Number.isFinite(this._runtimeOffsetX) && Number.isFinite(this._runtimeOffsetY)) {
+      offsetX = this._runtimeOffsetX;
+      offsetY = this._runtimeOffsetY;
+    }
+
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
+
+    const newLeft = highlightDoc.left + offsetX;
+    const newTop = highlightDoc.top + offsetY;
+    this.container.style.left = `${newLeft}px`;
+    this.container.style.top = `${newTop}px`;
   }
 }

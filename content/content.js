@@ -67,6 +67,9 @@ class NotesLayerContent {
         url: window.location.href
       });
       
+      // Make highlighter accessible globally for NoteCard
+      window.notesLayerContent = this;
+      
       // Wait for DOM to be ready if needed
       if (document.readyState === 'loading') {
         await new Promise(resolve => {
@@ -1439,36 +1442,53 @@ class NotesLayerContent {
       return;
     }
 
-    // Determine position
+    // Determine initial position (document coordinates)
     if (!position) {
-      const highlight = this.highlighter.getHighlight(noteId);
-      
-      if (highlight) {
-        let rect;
+      const scrollX = window.scrollX || window.pageXOffset || 0;
+      const scrollY = window.scrollY || window.pageYOffset || 0;
+
+      // Check if note has saved anchor-relative offset (preferred)
+      if (noteData && noteData.offsetX !== undefined && noteData.offsetY !== undefined) {
+        // Let NoteCard compute final position from highlight + offset
+        position = { x: scrollX, y: scrollY };
+      }
+      // Legacy: saved viewport coords when card used `position: fixed`
+      else if (noteData && noteData.positionX !== undefined && noteData.positionY !== undefined) {
+        position = {
+          x: Number(noteData.positionX) + scrollX,
+          y: Number(noteData.positionY) + scrollY
+        };
+      } else {
+        // Calculate position from highlight
+        const highlight = this.highlighter.getHighlight(noteId);
         
-        // Use highlight element position
-        if (highlight.elements && highlight.elements.length > 0) {
-             rect = highlight.elements[0].getBoundingClientRect();
-        } else if (highlight.element) {
-             rect = highlight.element.getBoundingClientRect();
-        } else if (highlight.range) {
-             rect = highlight.range.getBoundingClientRect();
-        }
+        if (highlight) {
+          let rect;
+          
+          // Use highlight element position
+          if (highlight.elements && highlight.elements.length > 0) {
+               rect = highlight.elements[0].getBoundingClientRect();
+          } else if (highlight.element) {
+               rect = highlight.element.getBoundingClientRect();
+          } else if (highlight.range) {
+               rect = highlight.range.getBoundingClientRect();
+          }
+          
+          if (rect) {
+            position = {
+              x: rect.right + 10 + scrollX,
+              y: rect.top + scrollY
+            };
+          }
+        } 
         
-        if (rect) {
+        // Fallback
+        if (!position) {
           position = {
-            x: rect.right + 10,
-            y: rect.top
+            x: scrollX + (window.innerWidth / 2 - 200),
+            y: scrollY + (window.innerHeight / 2 - 200)
           };
         }
-      } 
-      
-      // Fallback
-      if (!position) {
-        position = {
-          x: window.innerWidth / 2 - 200,
-          y: window.innerHeight / 2 - 200
-        };
       }
     }
 

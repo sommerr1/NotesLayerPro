@@ -1,0 +1,81 @@
+@startuml Sequence Diagram - Restore Notes on Page Load
+title Sequence diagram: Восстановление заметок при загрузке страницы
+
+actor User
+participant "Browser" as Browser
+participant "Content Script\n(content.js)" as Content
+participant "Background Worker\n(background.js)" as Background
+participant "IndexedDB\n(db.js)" as DB
+participant "Highlighter" as Highlighter
+participant "AnchorManager" as Anchor
+
+Browser -> Content: Страница загружена
+activate Content
+
+Content -> Content: init()
+Content -> Content: loadPageInfo()
+Content -> Background: getPageByUrl(url)
+activate Background
+Background -> DB: getPageByUrl(url)
+activate DB
+DB --> Background: page or null
+deactivate DB
+Background --> Content: page
+deactivate Background
+
+alt Page exists
+    Content -> Content: currentPage = page
+else Page not exists
+    Content -> Background: savePage(url, title)
+    activate Background
+    Background -> DB: savePage(url, title)
+    activate DB
+    DB --> Background: new page
+    deactivate DB
+    Background --> Content: new page
+    deactivate Background
+    Content -> Content: currentPage = new page
+end
+
+Content -> Content: restoreNotes()
+Content -> Background: getNotesByPageId(pageId)
+activate Background
+Background -> DB: getNotesByPageId(pageId)
+activate DB
+DB --> Background: notes[]
+deactivate DB
+Background --> Content: notes
+deactivate Background
+
+Content -> Background: getAnchorsByPageId(pageId)
+activate Background
+Background -> DB: getAnchorsByPageId(pageId)
+activate DB
+DB --> Background: anchors[]
+deactivate DB
+Background --> Content: anchors
+deactivate Background
+
+Content -> Highlighter: restoreHighlights(notes, anchors)
+activate Highlighter
+
+loop For each note
+    Highlighter -> Anchor: restoreAnchor(anchor)
+    activate Anchor
+    Anchor -> Anchor: Найти элемент по DOM path
+    Anchor --> Highlighter: element found
+    deactivate Anchor
+    
+    Highlighter -> Highlighter: highlightText(range, noteId)
+    Highlighter -> Highlighter: Создать визуальное выделение
+end
+
+Highlighter --> Content: Highlights restored
+deactivate Highlighter
+
+Content --> Browser: Заметки восстановлены и отображены
+deactivate Content
+
+User -> User: Видит выделенный текст на странице
+
+@enduml

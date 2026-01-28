@@ -1,0 +1,56 @@
+@startuml Sequence Diagram - Create Note
+title Sequence diagram: Создание заметки из выделенного текста
+
+actor User
+participant "Content Script\n(content.js)" as Content
+participant "Highlighter" as Highlighter
+participant "AnchorManager" as Anchor
+participant "Background Worker\n(background.js)" as Background
+participant "IndexedDB\n(db.js)" as DB
+participant "Note Card UI" as NoteCard
+
+User -> Content: Двойной клик на текст
+activate Content
+
+Content -> Content: Получить выделение текста
+Content -> Anchor: createAnchor(selection)
+activate Anchor
+Anchor -> Anchor: Извлечь текст и контекст
+Anchor -> Anchor: Создать DOM path
+Anchor --> Content: anchorData
+deactivate Anchor
+
+Content -> Background: saveAnchor(anchor)
+activate Background
+Background -> DB: saveAnchor(anchor)
+activate DB
+DB --> Background: saved anchor
+deactivate DB
+Background --> Content: anchor response
+deactivate Background
+
+Content -> Background: saveNote(note)
+activate Background
+Background -> DB: saveNote(note)
+activate DB
+DB --> Background: saved note
+deactivate DB
+Background --> Content: note response
+deactivate Background
+
+Content -> Highlighter: highlightText(range, noteId)
+activate Highlighter
+Highlighter -> Highlighter: Обернуть текст в span
+Highlighter --> Content: highlight created
+deactivate Highlighter
+
+Content -> NoteCard: new NoteCard(noteId, noteData)
+activate NoteCard
+NoteCard -> NoteCard: Создать UI карточки
+NoteCard --> User: Отобразить карточку
+deactivate NoteCard
+
+Content --> User: Заметка создана и отображена
+deactivate Content
+
+@enduml

@@ -1,0 +1,33 @@
+@startuml C4 Container Diagram - Notes Layer Pro
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container diagram for Notes Layer Pro
+
+Person(user, "Пользователь", "Создает заметки на веб-страницах, использует AI для уточнений")
+
+System_Boundary(extension, "Notes Layer Pro Extension") {
+    Container(background, "Background Service Worker", "JavaScript", "Обрабатывает сообщения, управляет БД, координирует AI запросы")
+    Container(content, "Content Scripts", "JavaScript", "Инжектируется в веб-страницы, создает заметки, выделяет текст")
+    Container(popup, "Popup UI", "HTML/JavaScript", "Интерфейс для просмотра всех заметок, поиска и экспорта")
+    ContainerDb(indexeddb, "IndexedDB", "Browser Database", "Хранит страницы, якоря и заметки локально")
+    Container(notecard, "Note Card UI", "HTML/JavaScript", "Компонент для отображения и редактирования заметок на странице")
+}
+
+System_Ext(google, "Google Search (AI)", "Внешний сервис для получения AI ответов через Gemini")
+
+Rel(user, background, "Использует", "Chrome Extension API")
+Rel(user, content, "Взаимодействует", "На веб-страницах")
+Rel(user, popup, "Открывает", "Иконка расширения")
+Rel(user, notecard, "Редактирует", "На странице")
+
+Rel(background, indexeddb, "Читает/Записывает", "Chrome Storage API")
+Rel(content, background, "Отправляет сообщения", "Chrome Runtime API")
+Rel(popup, background, "Отправляет сообщения", "Chrome Runtime API")
+Rel(notecard, background, "Отправляет сообщения", "Chrome Runtime API")
+Rel(content, notecard, "Создает и управляет", "DOM API")
+
+Rel(background, google, "Запрашивает AI ответы", "HTTPS/Google Search API")
+
+@enduml

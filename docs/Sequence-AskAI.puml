@@ -1,0 +1,46 @@
+@startuml Sequence Diagram - Ask AI Question
+title Sequence diagram: Запрос AI ответа на вопрос
+
+actor User
+participant "Note Card UI" as NoteCard
+participant "Background Worker\n(background.js)" as Background
+participant "Google Search Provider" as GoogleProvider
+participant "Google Search\n(External)" as Google
+participant "IndexedDB\n(db.js)" as DB
+
+User -> NoteCard: Вводит вопрос и нажимает "Ask AI"
+activate NoteCard
+
+NoteCard -> Background: askAI(question)
+activate Background
+
+Background -> GoogleProvider: askQuestion(question)
+activate GoogleProvider
+
+GoogleProvider -> Google: Создать вкладку с поисковым запросом
+activate Google
+Google --> GoogleProvider: Вкладка создана
+
+GoogleProvider -> Google: Дождаться загрузки страницы
+GoogleProvider -> Google: Активировать AI режим
+GoogleProvider -> Google: Извлечь AI ответ
+Google --> GoogleProvider: AI ответ (текст + скриншот)
+deactivate Google
+
+GoogleProvider --> Background: {text, screenshot}
+deactivate GoogleProvider
+
+Background -> DB: saveNote(updated note with AI answer)
+activate DB
+DB --> Background: saved note
+deactivate DB
+
+Background --> NoteCard: {success: true, answer, screenshot}
+deactivate Background
+
+NoteCard -> NoteCard: Отобразить AI ответ в карточке
+NoteCard --> User: Показать ответ
+
+deactivate NoteCard
+
+@enduml

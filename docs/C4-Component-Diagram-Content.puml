@@ -1,0 +1,20 @@
+@startuml C4 Component Diagram - Content Scripts
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component diagram for Notes Layer Pro - Content Scripts
+
+Container(content, "Content Scripts", "JavaScript", "Инжектируется в веб-страницы, создает заметки, выделяет текст")
+
+Component(content_js, "content.js", "JavaScript", "Главный модуль content script, управляет жизненным циклом")
+Component(anchor_js, "anchor.js", "JavaScript", "AnchorManager - создание и восстановление якорей для заметок")
+Component(highlighter_js, "highlighter.js", "JavaScript", "Highlighter - выделение текста на странице")
+Component(notecard_js, "note-card.js", "JavaScript", "NoteCard - компонент карточки заметки")
+
+Rel(content_js, anchor_js, "Использует", "ES6 Import")
+Rel(content_js, highlighter_js, "Использует", "ES6 Import")
+Rel(content_js, notecard_js, "Создает экземпляры", "ES6 Import")
+Rel(notecard_js, content_js, "Отправляет события", "Custom Events")
+
+@enduml

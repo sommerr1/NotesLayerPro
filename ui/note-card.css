@@ -1,18 +1,47 @@
 /* Note card styles */
 
 .notes-layer-card-container {
-  position: fixed;
+  position: absolute;
   z-index: 100000;
   background: white;
   border: 2px solid #4a90e2;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 400px;
+  min-width: 300px;
+  min-height: 180px;
   max-width: 600px;
   max-height: 80vh;
   overflow-y: auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
+}
+
+/* Resize handle (bottom-right) */
+.notes-layer-resize-handle {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  opacity: 0.55;
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, transparent 0 55%, rgba(0, 0, 0, 0.20) 55% 65%, transparent 65% 100%),
+    linear-gradient(135deg, transparent 0 35%, rgba(0, 0, 0, 0.16) 35% 45%, transparent 45% 100%),
+    linear-gradient(135deg, transparent 0 15%, rgba(0, 0, 0, 0.12) 15% 25%, transparent 25% 100%);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.notes-layer-resize-handle:hover {
+  opacity: 0.85;
+  background-color: rgba(74, 144, 226, 0.08);
+}
+
+.notes-layer-resize-handle:active {
+  opacity: 1;
+  background-color: rgba(74, 144, 226, 0.14);
 }
 
 .notes-layer-card-container.notes-layer-warning-yellow {
@@ -23,6 +52,21 @@
   border-color: #ff4444;
 }
 
+/* Dragging state */
+.notes-layer-card-container.notes-layer-dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  transition: box-shadow 0.2s ease;
+  /* Disable all transitions during drag for better performance */
+  transition: none !important;
+  /* Use GPU acceleration */
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.notes-layer-card-container.notes-layer-dragging .notes-layer-card-header {
+  background: #e8e8e8;
+}
+
 .notes-layer-card-header {
   padding: 7px 10px;
   background: #f5f5f5;
@@ -31,6 +75,9 @@
   align-items: center;
   gap: 8px;
   min-height: auto;
+  cursor: move;
+  user-select: none;
+  pointer-events: auto;
 }
 
 .notes-layer-card-header-controls {
@@ -117,6 +164,7 @@
   color: #666;
   border-radius: 3px;
   position: relative;
+  pointer-events: auto;
 }
 
 .notes-layer-header-btn:hover {
@@ -225,7 +273,7 @@
 }
 
 .notes-layer-card-body {
-  padding: 16px;
+  padding: 0;
 }
 
 .notes-layer-card-mode {
@@ -270,6 +318,11 @@
   border: none !important;
   border-radius: 0;
   outline: none !important;
+}
+
+/* Remove padding from Quill editor content */
+.notes-layer-quill-editor .ql-editor {
+  padding: 0 !important;
 }
 
 /* Make links visible in Quill editor */
@@ -461,4 +514,22 @@
   background: #f8d7da;
   border-color: #dc3545;
   color: #721c24;
+}
+
+/* Connection line styles */
+.notes-layer-connection-line {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 99999;
+}
+
+.notes-layer-connection-line path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.6;
 }

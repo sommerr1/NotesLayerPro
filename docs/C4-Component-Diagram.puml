@@ -1,0 +1,20 @@
+@startuml C4 Component Diagram - Notes Layer Pro
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component diagram for Notes Layer Pro - Background Service Worker
+
+Container(background, "Background Service Worker", "JavaScript", "Обрабатывает сообщения, управляет БД, координирует AI запросы")
+
+Component(background_js, "background.js", "JavaScript", "Главный обработчик сообщений и событий расширения")
+Component(db_js, "db.js", "JavaScript", "Модуль для работы с IndexedDB")
+Component(llm_provider, "llm-provider.js", "JavaScript", "Абстракция для LLM провайдеров")
+Component(google_provider, "google-search-provider.js", "JavaScript", "Провайдер для получения AI ответов через Google Search")
+
+Rel(background_js, db_js, "Использует", "ES6 Import")
+Rel(background_js, google_provider, "Использует", "ES6 Import")
+Rel(google_provider, llm_provider, "Наследует", "ES6 Extends")
+Rel(db_js, background, "Хранит данные в", "IndexedDB API")
+
+@enduml
