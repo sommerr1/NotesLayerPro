@@ -1283,36 +1283,46 @@ class NotesLayerContent {
       }
 
       const note = response.note;
-      const previewText = this.extractNotePreviewText(note);
 
-      // Create tooltip element
+      // Create tooltip element (hidden until positioned to avoid jerk)
       const tooltip = document.createElement('div');
       tooltip.className = 'notes-layer-preview-tooltip';
+      tooltip.style.visibility = 'hidden';
       
-      // If no body content, show empty tooltip with just background
-      if (!previewText || previewText.length === 0) {
-        tooltip.classList.add('notes-layer-preview-empty');
-        // Don't add any text content
+      // Check if we have annotation content with formatting (Delta format)
+      const hasAnnotationContent = note.annotationContent && 
+        (note.type === 'annotation' || !note.type);
+      
+      if (hasAnnotationContent) {
+        // Use Quill for formatted content
+        await this.createQuillPreview(tooltip, note);
       } else {
-        tooltip.textContent = previewText;
+        // Use plain text for questions and AI answers
+        const previewText = this.extractNotePreviewText(note);
+        if (!previewText || previewText.length === 0) {
+          tooltip.classList.add('notes-layer-preview-empty');
+        } else {
+          tooltip.textContent = previewText;
+        }
       }
 
-      // Position tooltip near highlight
+      // Position tooltip near highlight (fixed = viewport coords, no layout shift)
       const rect = highlightElement.getBoundingClientRect();
-      const scrollX = window.scrollX || window.pageXOffset;
-      const scrollY = window.scrollY || window.pageYOffset;
 
       // Add to document first to measure actual size
       document.body.appendChild(tooltip);
+      
+      // Wait a bit for Quill to render if it was used
+      if (hasAnnotationContent) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
       
       // Get actual tooltip dimensions after rendering
       const tooltipRect = tooltip.getBoundingClientRect();
       const tooltipWidth = tooltipRect.width;
       const tooltipHeight = tooltipRect.height;
-      const tooltipPadding = 24; // 12px * 2
-      const tooltipMinHeight = 20;
 
-      // Position above or below highlight
+      // Position above or below highlight (viewport coordinates)
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
       
@@ -1320,37 +1330,36 @@ class NotesLayerContent {
       
       if (spaceBelow > tooltipHeight + 20 || spaceBelow > spaceAbove) {
         // Show below
-        top = scrollY + rect.bottom + 8;
+        top = rect.bottom + 8;
         transformY = '0';
       } else {
         // Show above
-        top = scrollY + rect.top - 8;
+        top = rect.top - 8;
         transformY = '-100%';
       }
 
       // Center horizontally relative to highlight, but keep within viewport
-      let left = scrollX + rect.left + rect.width / 2;
+      let left = rect.left + rect.width / 2;
       const viewportWidth = window.innerWidth;
       const tooltipHalfWidth = tooltipWidth / 2;
+      const margin = 10;
       
       // Adjust if tooltip would go off screen
-      if (left - tooltipHalfWidth < scrollX + 10) {
-        // Too far left, align to left edge
-        left = scrollX + 10 + tooltipHalfWidth;
+      if (left - tooltipHalfWidth < margin) {
+        left = margin + tooltipHalfWidth;
         transformX = '0';
-      } else if (left + tooltipHalfWidth > scrollX + viewportWidth - 10) {
-        // Too far right, align to right edge
-        left = scrollX + viewportWidth - 10 - tooltipHalfWidth;
+      } else if (left + tooltipHalfWidth > viewportWidth - margin) {
+        left = viewportWidth - margin - tooltipHalfWidth;
         transformX = '0';
       } else {
-        // Center
         transformX = '-50%';
       }
 
-      // Apply positioning
+      // Apply positioning (fixed: values in viewport pixels)
       tooltip.style.left = `${left}px`;
       tooltip.style.top = `${top}px`;
       tooltip.style.transform = `translate(${transformX}, ${transformY})`;
+      tooltip.style.visibility = '';
 
       // Tooltip already added to document for measurement
       this.currentTooltip = tooltip;
@@ -1367,6 +1376,89 @@ class NotesLayerContent {
       });
     } catch (error) {
       console.error('Error showing note preview:', error);
+    }
+  }
+
+  /**
+   * Create Quill preview for formatted content
+   */
+  async createQuillPreview(tooltip, note) {
+    // Load Quill CSS if not already loaded
+    const quillCssUrl = chrome.runtime.getURL('lib/quill.snow.css');
+    if (!document.querySelector(`link[href="${quillCssUrl}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = quillCssUrl;
+      document.head.appendChild(link);
+    }
+
+    // Wait for Quill to be available
+    let retries = 0;
+    const maxRetries = 50; // 5 seconds total
+    while (typeof Quill === 'undefined' && retries < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      retries++;
+    }
+
+    if (typeof Quill === 'undefined') {
+      console.error('Quill library not loaded for preview');
+      // Fallback to plain text
+      const previewText = this.extractNotePreviewText(note);
+      if (!previewText || previewText.length === 0) {
+        tooltip.classList.add('notes-layer-preview-empty');
+      } else {
+        tooltip.textContent = previewText;
+      }
+      return;
+    }
+
+    // Create container for Quill editor
+    const quillContainer = document.createElement('div');
+    quillContainer.className = 'notes-layer-preview-quill';
+    tooltip.appendChild(quillContainer);
+
+    try {
+      // Initialize Quill in read-only mode without toolbar
+      const quill = new Quill(quillContainer, {
+        theme: 'snow',
+        readOnly: true,
+        modules: {
+          toolbar: false
+        }
+      });
+
+      // Load annotation content (Delta format)
+      if (note.annotationContent) {
+        try {
+          const delta = typeof note.annotationContent === 'string'
+            ? JSON.parse(note.annotationContent)
+            : note.annotationContent;
+          
+          if (delta && delta.ops) {
+            quill.setContents(delta);
+          }
+        } catch (error) {
+          console.error('Error loading annotation content in preview:', error);
+          // Fallback to plain text
+          const previewText = this.extractNotePreviewText(note);
+          if (previewText) {
+            tooltip.textContent = previewText;
+          } else {
+            tooltip.classList.add('notes-layer-preview-empty');
+          }
+        }
+      } else {
+        tooltip.classList.add('notes-layer-preview-empty');
+      }
+    } catch (error) {
+      console.error('Error initializing Quill for preview:', error);
+      // Fallback to plain text
+      const previewText = this.extractNotePreviewText(note);
+      if (previewText) {
+        tooltip.textContent = previewText;
+      } else {
+        tooltip.classList.add('notes-layer-preview-empty');
+      }
     }
   }
 
@@ -1390,8 +1482,8 @@ class NotesLayerContent {
    * Show note card
    */
   async showNoteCard(noteId, noteData = null, position = null) {
-    // Close other cards
-    this.closeAllCards();
+    // Close only unpinned cards (keep pinned cards open)
+    this.closeUnpinnedCards();
 
     // Get note data if not provided
     if (!noteData) {
@@ -1504,6 +1596,24 @@ class NotesLayerContent {
       card.close();
     }
     this.openCards.clear();
+  }
+
+  /**
+   * Close only unpinned note cards (keep pinned cards open)
+   */
+  closeUnpinnedCards() {
+    const cardsToClose = [];
+    for (const [noteId, card] of this.openCards.entries()) {
+      if (!card.isPinned) {
+        cardsToClose.push(noteId);
+      }
+    }
+    for (const noteId of cardsToClose) {
+      const card = this.openCards.get(noteId);
+      if (card) {
+        card.close();
+      }
+    }
   }
 
   /**

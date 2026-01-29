@@ -42,6 +42,7 @@ class NoteCard {
     this.container = null;
     this.mode = noteData?.type || 'annotation'; // 'annotation' or 'question'
     this.warningLevel = noteData?.warningLevel || 'none';
+    this.isPinned = noteData?.isPinned || false;
     
     // Drag & drop state
     this.isDragging = false;
@@ -136,6 +137,9 @@ class NoteCard {
     // Append to body
     document.body.appendChild(this.container);
 
+    // Hide any existing tooltips from other cards
+    this.hideAllTooltips();
+
     // Keep card positioned relative to highlight (and migrate legacy positions if needed)
     this.setupScrollTracking();
     this.updatePosition();
@@ -167,6 +171,17 @@ class NoteCard {
 
     // Set initial mode
     this.setMode(this.mode);
+    
+    // Update pin button visual state
+    this.updatePinButtonState();
+    
+    // Hide tooltips from other cards after a short delay (in case they appear after initialization)
+    setTimeout(() => {
+      this.hideOtherCardsTooltips();
+    }, 200);
+    setTimeout(() => {
+      this.hideOtherCardsTooltips();
+    }, 500);
   }
 
   /**
@@ -242,6 +257,9 @@ class NoteCard {
       // Fix tooltip positioning when it appears
       this.setupTooltipPositionFix();
 
+      // Header color squares in toolbar (pastel red, gray = current header, green)
+      this.setupHeaderColorButtons();
+
       console.log('Quill editor initialized successfully');
     } catch (error) {
       console.error('Error initializing Quill:', error);
@@ -276,6 +294,14 @@ class NoteCard {
     // Set header text based on note title or anchor
     // setHeaderText already adds the edit button at the end, so we don't need to add it again
     await this.setHeaderText(noteData.anchorId);
+
+    // Apply saved header color if any
+    const headerEl = this.container.querySelector('.notes-layer-card-header');
+    if (headerEl && noteData.headerColor) {
+      headerEl.style.backgroundColor = noteData.headerColor;
+    } else if (headerEl) {
+      headerEl.style.backgroundColor = '';
+    }
 
     // Load question content
     const questionInput = this.container.querySelector('.notes-layer-question-input');
@@ -590,6 +616,69 @@ class NoteCard {
   }
 
   /**
+   * Update pin button visual state
+   */
+  updatePinButtonState() {
+    if (!this.container) return;
+    
+    const pinBtn = this.container.querySelector('.notes-layer-pin-btn');
+    if (pinBtn) {
+      if (this.isPinned) {
+        pinBtn.classList.add('pinned');
+        pinBtn.title = 'Unpin Note';
+        pinBtn.setAttribute('aria-label', 'Unpin Note');
+      } else {
+        pinBtn.classList.remove('pinned');
+        pinBtn.title = 'Pin Note';
+        pinBtn.setAttribute('aria-label', 'Pin Note');
+      }
+    }
+    
+    // Update container class
+    if (this.isPinned) {
+      this.container.classList.add('pinned');
+    } else {
+      this.container.classList.remove('pinned');
+    }
+  }
+
+  /**
+   * Toggle pin state
+   */
+  async togglePin() {
+    this.isPinned = !this.isPinned;
+    this.updatePinButtonState();
+    
+    // Save pin state to database
+    try {
+      const response = await safeSendMessage({
+        action: 'getNoteById',
+        noteId: this.noteId
+      });
+
+      if (response.success && response.note) {
+        const note = response.note;
+        note.isPinned = this.isPinned;
+        note.updatedAt = Date.now();
+
+        await safeSendMessage({
+          action: 'saveNote',
+          note
+        });
+
+        // Update local note data
+        if (this.noteData) {
+          this.noteData.isPinned = this.isPinned;
+        }
+
+        console.log('Pin state saved:', this.isPinned);
+      }
+    } catch (error) {
+      console.error('Error saving pin state:', error);
+    }
+  }
+
+  /**
    * Insert anchor text into editor
    */
   async insertAnchorText(anchorId) {
@@ -602,16 +691,52 @@ class NoteCard {
         });
 
         if (response.success && response.anchor && response.anchor.text) {
-            const anchorText = response.anchor.text;
-            // Insert text as quote or bold
-            this.quill.insertText(0, anchorText + '\n\n', 'bold', true);
-            // Move cursor immediately after the inserted word on first line
-            this.quill.setSelection(anchorText.length, 0);
+            const anchorText = response.anchor.text.trim();
+            // Insert as plain text (no bold), no extra newlines
+            this.quill.insertText(0, anchorText, 'user');
+            // Select the inserted phrase for copying
+            this.quill.setSelection(0, anchorText.length);
             this.quill.focus();
         }
     } catch (error) {
         console.error('Error fetching anchor text:', error);
     }
+  }
+
+  /**
+   * Hide all Quill tooltips (from any card)
+   */
+  hideAllTooltips() {
+    const tooltips = document.querySelectorAll('.ql-tooltip');
+    tooltips.forEach(tooltip => {
+      if (tooltip.parentNode) {
+        tooltip.remove();
+      }
+    });
+  }
+
+  /**
+   * Hide tooltips that don't belong to this card
+   */
+  hideOtherCardsTooltips() {
+    if (!this.container || !this.quill) return;
+    
+    const tooltips = document.querySelectorAll('.ql-tooltip');
+    const editorElement = this.container.querySelector('.notes-layer-quill-editor');
+    
+    tooltips.forEach(tooltip => {
+      // Check if tooltip belongs to this card
+      const isOurTooltip = tooltip.closest('.notes-layer-card-container') === this.container ||
+                          (document.body.contains(tooltip) && 
+                           (this.quill.hasFocus() || document.activeElement === editorElement));
+      
+      if (!isOurTooltip) {
+        // Hide tooltip from other cards
+        if (tooltip.parentNode) {
+          tooltip.remove();
+        }
+      }
+    });
   }
 
   /**
@@ -623,26 +748,34 @@ class NoteCard {
     // Check for tooltip and fix its position
     const checkAndFixTooltip = () => {
       // Quill may append tooltip to body or to the editor container
-      const tooltip = document.querySelector('.ql-tooltip');
-      if (tooltip && tooltip.offsetParent !== null) {
-        // Check if this tooltip belongs to our editor
-        const editorElement = this.container.querySelector('.notes-layer-quill-editor');
-        if (editorElement) {
-          // Check if tooltip is related to our editor
-          // Quill typically adds tooltip to body, so we check if our editor is focused/active
-          const isOurTooltip = tooltip.closest('.notes-layer-card-container') === this.container ||
-                               (document.body.contains(tooltip) && 
-                                (this.quill.hasFocus() || document.activeElement === editorElement));
-          
-          if (isOurTooltip) {
-            // Fix position with multiple attempts to ensure it works
-            this.fixTooltipPosition(tooltip);
-            // Re-check after a short delay to handle any layout changes
-            setTimeout(() => this.fixTooltipPosition(tooltip), 100);
-            setTimeout(() => this.fixTooltipPosition(tooltip), 300);
+      const tooltips = document.querySelectorAll('.ql-tooltip');
+      const editorElement = this.container.querySelector('.notes-layer-quill-editor');
+      
+      tooltips.forEach(tooltip => {
+        if (tooltip && tooltip.offsetParent !== null) {
+          // Check if this tooltip belongs to our editor
+          if (editorElement) {
+            // Check if tooltip is related to our editor
+            // Quill typically adds tooltip to body, so we check if our editor is focused/active
+            const isOurTooltip = tooltip.closest('.notes-layer-card-container') === this.container ||
+                                 (document.body.contains(tooltip) && 
+                                  (this.quill.hasFocus() || document.activeElement === editorElement));
+            
+            if (isOurTooltip) {
+              // Fix position with multiple attempts to ensure it works
+              this.fixTooltipPosition(tooltip);
+              // Re-check after a short delay to handle any layout changes
+              setTimeout(() => this.fixTooltipPosition(tooltip), 100);
+              setTimeout(() => this.fixTooltipPosition(tooltip), 300);
+            } else {
+              // Hide tooltip from other cards
+              if (tooltip.parentNode) {
+                tooltip.remove();
+              }
+            }
           }
         }
-      }
+      });
     };
 
     // Listen for selection changes (tooltip appears when link is clicked)
@@ -656,14 +789,36 @@ class NoteCard {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.classList && node.classList.contains('ql-tooltip')) {
-              setTimeout(() => this.fixTooltipPosition(node), 50);
-              setTimeout(() => this.fixTooltipPosition(node), 150);
+              // Check if this tooltip belongs to our card
+              const isOurTooltip = node.closest('.notes-layer-card-container') === this.container ||
+                                  (document.body.contains(node) && 
+                                   (this.quill.hasFocus() || document.activeElement === this.container.querySelector('.notes-layer-quill-editor')));
+              
+              if (isOurTooltip) {
+                setTimeout(() => this.fixTooltipPosition(node), 50);
+                setTimeout(() => this.fixTooltipPosition(node), 150);
+              } else {
+                // Hide tooltip from other cards immediately
+                if (node.parentNode) {
+                  node.remove();
+                }
+              }
             }
             // Also check for tooltip in added nodes
             const tooltip = node.querySelector && node.querySelector('.ql-tooltip');
             if (tooltip) {
-              setTimeout(() => this.fixTooltipPosition(tooltip), 50);
-              setTimeout(() => this.fixTooltipPosition(tooltip), 150);
+              const isOurTooltip = tooltip.closest('.notes-layer-card-container') === this.container ||
+                                  (document.body.contains(tooltip) && 
+                                   (this.quill.hasFocus() || document.activeElement === this.container.querySelector('.notes-layer-quill-editor')));
+              
+              if (isOurTooltip) {
+                setTimeout(() => this.fixTooltipPosition(tooltip), 50);
+                setTimeout(() => this.fixTooltipPosition(tooltip), 150);
+              } else {
+                if (tooltip.parentNode) {
+                  tooltip.remove();
+                }
+              }
             }
           }
         });
@@ -684,20 +839,93 @@ class NoteCard {
     // Fix position on window resize and scroll
     const handleResize = () => {
       checkAndFixTooltip();
+      // Also hide tooltips from other cards
+      this.hideOtherCardsTooltips();
     };
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleResize, true);
+    
+    // Periodically check and hide tooltips from other cards
+    this._tooltipCleanupInterval = setInterval(() => {
+      this.hideOtherCardsTooltips();
+    }, 500); // Check every 500ms
 
     // Store cleanup function
     this._tooltipCleanup = () => {
       observer.disconnect();
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', handleResize, true);
+      if (this._tooltipCleanupInterval) {
+        clearInterval(this._tooltipCleanupInterval);
+        this._tooltipCleanupInterval = null;
+      }
     };
 
     // Initial check
     setTimeout(checkAndFixTooltip, 100);
     setTimeout(checkAndFixTooltip, 300);
+  }
+
+  /**
+   * Add header color squares to Quill toolbar (pastel red, gray = current header, green)
+   */
+  setupHeaderColorButtons() {
+    const toolbar = this.container.querySelector('.ql-toolbar');
+    if (!toolbar) return;
+
+    const colors = [
+      { value: '#e8b4b8', title: 'questions' },
+      { value: '#f5f5f5', title: 'info' },
+      { value: '#b8d4b8', title: 'additional' }
+    ];
+
+    const wrap = document.createElement('span');
+    wrap.className = 'ql-formats notes-layer-header-color-formats';
+
+    const separator = document.createElement('span');
+    separator.className = 'notes-layer-header-color-sep';
+    wrap.appendChild(separator);
+
+    colors.forEach(({ value, title }) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'notes-layer-header-color-btn';
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.style.backgroundColor = value;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const header = this.container.querySelector('.notes-layer-card-header');
+        if (header) {
+          header.style.backgroundColor = value;
+          this.noteData.headerColor = value;
+          this.saveHeaderColor();
+        }
+      });
+      wrap.appendChild(btn);
+    });
+
+    toolbar.appendChild(wrap);
+  }
+
+  /**
+   * Persist header color to note
+   */
+  async saveHeaderColor() {
+    try {
+      const getResponse = await safeSendMessage({
+        action: 'getNoteById',
+        noteId: this.noteId
+      });
+      if (!getResponse?.success || !getResponse.note) return;
+      const note = getResponse.note;
+      note.headerColor = this.noteData?.headerColor ?? null;
+      note.updatedAt = Date.now();
+      await safeSendMessage({ action: 'saveNote', note });
+    } catch (error) {
+      console.error('Error saving header color:', error);
+    }
   }
 
   /**
@@ -960,6 +1188,15 @@ class NoteCard {
       });
     }
 
+    // Pin note button
+    const pinBtn = this.container.querySelector('.notes-layer-pin-btn');
+    if (pinBtn) {
+      pinBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.togglePin();
+      });
+    }
+
     // Switch to annotation mode
     const switchToAnnotationBtn = this.container.querySelector('.notes-layer-switch-to-annotation');
     if (switchToAnnotationBtn) {
@@ -975,6 +1212,12 @@ class NoteCard {
           this.askQuestion();
         }
       });
+    }
+
+    // Send icon inside Ask AI input
+    const questionSendBtn = this.container.querySelector('.notes-layer-question-send');
+    if (questionSendBtn) {
+      questionSendBtn.addEventListener('click', () => this.askQuestion());
     }
 
     // Accept answer as annotation
@@ -1007,6 +1250,11 @@ class NoteCard {
     // Close on outside click
     // Store reference to handler for cleanup
     this._outsideClickHandler = (e) => {
+      // Don't close if pinned
+      if (this.isPinned) {
+        return;
+      }
+      
       // Don't close if we're dragging or just finished dragging
       if (this.isDragging || this._justFinishedDragging) {
         return;
@@ -1142,19 +1390,15 @@ class NoteCard {
     const dy = this.lastResizeMouseY - this.resizeStartY;
 
     const computed = window.getComputedStyle(this.container);
-    const minW = Number.parseFloat(computed.minWidth) || 300;
-    const minH = Number.parseFloat(computed.minHeight) || 180;
+    const minW = Number.parseFloat(computed.minWidth) || 150;
+    const minH = Number.parseFloat(computed.minHeight) || 90;
 
-    // Respect CSS max-* when present; also constrain to viewport
+    // No maximum limit: allow resize to any size (CSS max-* removed for editor card)
     const cssMaxW = Number.parseFloat(computed.maxWidth);
     const cssMaxH = Number.parseFloat(computed.maxHeight);
-
-    const rect = this.container.getBoundingClientRect();
-    const viewportMaxW = Math.max(minW, window.innerWidth - rect.left - 8);
-    const viewportMaxH = Math.max(minH, window.innerHeight - rect.top - 8);
-
-    const maxW = Number.isFinite(cssMaxW) ? Math.min(cssMaxW, viewportMaxW) : viewportMaxW;
-    const maxH = Number.isFinite(cssMaxH) ? Math.min(cssMaxH, viewportMaxH) : viewportMaxH;
+    const noMax = 1e6; // effective no-limit when CSS max is not set
+    const maxW = Number.isFinite(cssMaxW) ? cssMaxW : noMax;
+    const maxH = Number.isFinite(cssMaxH) ? cssMaxH : noMax;
 
     const newW = Math.max(minW, Math.min(this.resizeStartWidth + dx, maxW));
     const newH = Math.max(minH, Math.min(this.resizeStartHeight + dy, maxH));
@@ -1843,20 +2087,22 @@ class NoteCard {
       return;
     }
 
-    // Show loading - disable input while processing
+    // Send request to Google; return to editor mode immediately (do not wait for response)
+    const responsePromise = safeSendMessage({
+      action: 'askAI',
+      question
+    });
+    this.setMode('annotation');
     if (questionInput) {
-      questionInput.disabled = true;
-      questionInput.placeholder = 'Loading...';
+      questionInput.disabled = false;
+      questionInput.placeholder = 'Enter your question...';
     }
 
     try {
-      const response = await safeSendMessage({
-        action: 'askAI',
-        question
-      });
+      const response = await responsePromise;
 
       if (response.success && response.answer) {
-        // Handle both text and screenshot responses
+        // Handle both text and screenshot responses (save in background; user already in editor)
         let answer;
         if (typeof response.answer === 'string') {
           answer = response.answer;
@@ -1867,33 +2113,6 @@ class NoteCard {
         } else {
           answer = String(response.answer);
         }
-        const screenshot = response.screenshot || (response.answer && typeof response.answer === 'object' && response.answer.screenshot) || null;
-        
-        // Show answer
-        const answerContainer = this.container.querySelector('.notes-layer-answer-container');
-        const answerText = this.container.querySelector('.notes-layer-answer-text');
-        if (answerContainer && answerText) {
-          if (screenshot) {
-            // Show screenshot with text
-            answerText.innerHTML = `
-              <div style="margin-bottom: 12px;">
-                <img src="${screenshot}" style="max-width: 100%; height: auto; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" alt="AI Answer Screenshot" />
-              </div>
-              <div style="margin-top: 12px;">${answer}</div>
-            `;
-          } else {
-            answerText.textContent = answer;
-          }
-          answerContainer.style.display = 'block';
-        }
-
-        // Show accept/delete buttons
-        const acceptBtn = this.container.querySelector('.notes-layer-accept-answer');
-        const deleteBtn = this.container.querySelector('.notes-layer-delete-question');
-        if (acceptBtn) acceptBtn.style.display = 'inline-block';
-        if (deleteBtn) deleteBtn.style.display = 'inline-block';
-
-        // Save question and answer (extract text if it's an object)
         let answerTextToSave;
         if (typeof response.answer === 'string') {
           answerTextToSave = response.answer;
@@ -2180,6 +2399,9 @@ class NoteCard {
    * Close card
    */
   close() {
+    // Hide tooltip if visible
+    this.hideAllTooltips();
+    
     // Clean up tooltip position fix listeners
     if (this._tooltipCleanup) {
       this._tooltipCleanup();

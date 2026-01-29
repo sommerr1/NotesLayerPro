@@ -14,10 +14,14 @@
         </svg>
       </button>
       <button class="notes-layer-header-btn notes-layer-ask-question-btn" title="Ask AI" aria-label="Ask AI">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <text x="12" y="18" font-family="system-ui, -apple-system, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="currentColor" letter-spacing="0.5" transform="scaleY(1.5) translate(0, -2)">AI</text>
+        </svg>
+      </button>
+      <button class="notes-layer-header-btn notes-layer-pin-btn" title="Pin Note" aria-label="Pin Note">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          <path d="M12 17v5"></path>
+          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a2 2 0 0 0-2-2H11a2 2 0 0 0-2 2v3.76z"></path>
         </svg>
       </button>
       <button class="notes-layer-header-btn notes-layer-delete-note-btn" title="Delete Note" aria-label="Delete Note">
@@ -49,11 +53,19 @@
     <!-- Question mode -->
     <div class="notes-layer-question-mode" style="display: none;">
       <div class="notes-layer-question-container">
-        <input 
-          type="text" 
-          class="notes-layer-question-input" 
-          placeholder="Enter your question..."
-        />
+        <div class="notes-layer-question-input-wrap">
+          <input 
+            type="text" 
+            class="notes-layer-question-input" 
+            placeholder="Enter your question..."
+          />
+          <button type="button" class="notes-layer-question-send notes-layer-input-icon-btn" title="Отправить" aria-label="Отправить">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="notes-layer-answer-container" style="display: none;">
         <div class="notes-layer-answer-label">AI Answer:</div>

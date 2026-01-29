@@ -7,11 +7,9 @@
   border: 2px solid #4a90e2;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 300px;
-  min-height: 180px;
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
+  min-width: 150px;
+  min-height: 90px;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
 }
@@ -19,13 +17,13 @@
 /* Resize handle (bottom-right) */
 .notes-layer-resize-handle {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 14px;
-  height: 14px;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
   cursor: nwse-resize;
-  opacity: 0.55;
-  border-radius: 4px;
+  opacity: 0.7;
+  border-radius: 3px;
   background:
     linear-gradient(135deg, transparent 0 55%, rgba(0, 0, 0, 0.20) 55% 65%, transparent 65% 100%),
     linear-gradient(135deg, transparent 0 35%, rgba(0, 0, 0, 0.16) 35% 45%, transparent 45% 100%),
@@ -68,12 +66,12 @@
 }
 
 .notes-layer-card-header {
-  padding: 7px 10px;
+  padding: 5px 7px;
   background: #f5f5f5;
   border-bottom: 1px solid #ddd;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-height: auto;
   cursor: move;
   user-select: none;
@@ -83,7 +81,7 @@
 .notes-layer-card-header-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   flex-shrink: 0;
   margin-left: auto;
 }
@@ -92,8 +90,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   border: none;
   background: transparent;
@@ -122,8 +120,8 @@
 }
 
 .notes-layer-toggle-icon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transform: rotate(0deg);
   color: currentColor;
@@ -137,7 +135,7 @@
 .notes-layer-card-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
@@ -153,14 +151,14 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px;
+  padding: 2px;
   opacity: 0.6;
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   color: #666;
   border-radius: 3px;
   position: relative;
@@ -179,8 +177,8 @@
 }
 
 .notes-layer-header-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   display: block;
 }
 
@@ -193,8 +191,24 @@
   background: rgba(255, 68, 68, 0.2);
 }
 
+.notes-layer-pin-btn.pinned {
+  opacity: 1;
+  color: #4a90e2;
+}
+
+.notes-layer-pin-btn.pinned:hover {
+  background: rgba(74, 144, 226, 0.15);
+  color: #357abd;
+}
+
+.notes-layer-card-container.pinned {
+  border-color: #4a90e2;
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+}
+
 .notes-layer-card-title {
   font-weight: 600;
+  font-size: 13px;
   color: #333;
   flex: 1;
   min-width: 0;
@@ -203,7 +217,7 @@
   white-space: nowrap;
   display: inline-block;
   position: relative;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .notes-layer-card-title.editing {
@@ -257,12 +271,12 @@
 .notes-layer-card-close {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: 16px;
   cursor: pointer;
   color: #666;
   padding: 0;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -311,6 +325,51 @@
 
 .notes-layer-card-container.notes-layer-panels-expanded .ql-toolbar {
   display: flex !important;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.notes-layer-card-container.notes-layer-panels-expanded .ql-toolbar .ql-formats {
+  flex-shrink: 0;
+}
+
+/* Header color squares in toolbar – stay on the right, clip when narrow */
+.notes-layer-header-color-formats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.notes-layer-header-color-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  align-self: center;
+}
+
+.notes-layer-header-color-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.notes-layer-header-color-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.notes-layer-header-color-btn:active {
+  transform: scale(0.96);
 }
 
 .notes-layer-quill-editor {
@@ -320,9 +379,10 @@
   outline: none !important;
 }
 
-/* Remove padding from Quill editor content */
+/* Quill editor content: indent from left and top by 1 character */
 .notes-layer-quill-editor .ql-editor {
-  padding: 0 !important;
+  padding: 1ch 0 0 1ch !important;
+  overflow-y: hidden !important;
 }
 
 /* Make links visible in Quill editor */
@@ -411,14 +471,71 @@
   margin-bottom: 16px;
 }
 
-.notes-layer-question-input {
-  width: 100%;
-  padding: 8px;
+/* One bordered box: input + send icon inside on the right */
+.notes-layer-question-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
   border: 1px solid #ddd;
   border-radius: 4px;
+  background: #fff;
+  min-height: 36px;
+}
+
+.notes-layer-question-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 32px 8px 8px;
+  border: none;
+  border-radius: 4px;
   font-size: 14px;
-  margin-bottom: 8px;
   box-sizing: border-box;
+  background: transparent;
+  outline: none;
+}
+
+.notes-layer-question-input::placeholder {
+  color: #999;
+}
+
+/* Send icon fixed inside the right side of the input box */
+.notes-layer-input-icon-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #666;
+  opacity: 0.6;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.notes-layer-input-icon-btn:hover {
+  opacity: 1;
+  background: rgba(74, 144, 226, 0.1);
+  color: #4a90e2;
+}
+
+.notes-layer-input-icon-btn:active {
+  transform: translateY(-50%) scale(0.9);
+  background: rgba(74, 144, 226, 0.2);
+}
+
+.notes-layer-input-icon-btn svg {
+  width: 10px;
+  height: 10px;
+  display: block;
 }
 
 .notes-layer-answer-container {

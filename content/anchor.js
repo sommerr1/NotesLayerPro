@@ -262,7 +262,7 @@ class AnchorManager {
       return { range: anywhereMatch, warningLevel: 'red' };
     }
 
-    console.warn('AnchorManager: Could not restore anchor for Copilot, text:', anchor.text);
+    console.log('AnchorManager: Could not restore anchor for Copilot, text:', anchor.text);
     return { range: null, warningLevel: 'red' };
   }
 

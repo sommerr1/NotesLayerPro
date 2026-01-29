@@ -30,28 +30,68 @@
   pointer-events: auto !important;
 }
 
-/* Note preview tooltip */
+/* Note preview tooltip - fixed to avoid layout shift / horizontal scrollbar */
 .notes-layer-preview-tooltip {
-  position: absolute !important;
+  position: fixed !important;
   z-index: 100001 !important;
   background-color: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(12px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
   color: #2a2a2a !important;
-  padding: 10px 14px !important;
+  padding: 12px 15px !important;
   border-radius: 8px !important;
-  font-size: 14px !important;
-  line-height: 1.5 !important;
+  font-size: 13px !important;
+  line-height: 1.42 !important;
+  font-family: Helvetica, Arial, sans-serif !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
   pointer-events: auto !important;
-  white-space: pre-wrap !important;
-  word-wrap: break-word !important;
   animation: notes-layer-tooltip-fade-in 0.2s ease-out !important;
   width: auto !important;
   min-width: 0 !important;
-  max-width: 300px !important;
+  max-width: 600px !important;
   display: inline-block !important;
   border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Quill editor styles inside preview tooltip */
+.notes-layer-preview-tooltip .notes-layer-preview-quill {
+  width: 100% !important;
+}
+
+.notes-layer-preview-tooltip .ql-toolbar {
+  display: none !important;
+}
+
+.notes-layer-preview-tooltip .ql-container,
+.notes-layer-preview-tooltip .ql-editor {
+  border: none !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.42 !important;
+  font-family: Helvetica, Arial, sans-serif !important;
+}
+
+.notes-layer-preview-tooltip .ql-container {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+.notes-layer-preview-tooltip .ql-editor {
+  overflow-y: visible !important;
+  overflow-x: visible !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  min-height: auto !important;
+  height: auto !important;
+}
+
+.notes-layer-preview-tooltip .ql-editor p,
+.notes-layer-preview-tooltip .ql-editor ol,
+.notes-layer-preview-tooltip .ql-editor ul,
+.notes-layer-preview-tooltip .ql-editor pre,
+.notes-layer-preview-tooltip .ql-editor blockquote {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Empty tooltip (no body content) */
