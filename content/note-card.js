@@ -876,7 +876,9 @@ class NoteCard {
     const colors = [
       { value: '#e8b4b8', title: 'questions' },
       { value: '#f5f5f5', title: 'info' },
-      { value: '#b8d4b8', title: 'additional' }
+      { value: '#b8d4b8', title: 'additional' },
+      { value: '#f0e68c', title: 'accent' },
+      { value: '#b0d4e8', title: 'additional 2' }
     ];
 
     const wrap = document.createElement('span');
@@ -1244,6 +1246,20 @@ class NoteCard {
       editTitleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.startEditingTitle();
+      });
+    }
+
+    // Body scroll: show scrollbar while scrolling, hide after idle (no text jump thanks to scrollbar-gutter)
+    const cardBody = this.container.querySelector('.notes-layer-card-body');
+    if (cardBody) {
+      this._bodyScrollTimeout = null;
+      cardBody.addEventListener('scroll', () => {
+        cardBody.classList.add('notes-layer-body-scrolling');
+        if (this._bodyScrollTimeout) clearTimeout(this._bodyScrollTimeout);
+        this._bodyScrollTimeout = setTimeout(() => {
+          cardBody.classList.remove('notes-layer-body-scrolling');
+          this._bodyScrollTimeout = null;
+        }, 800);
       });
     }
 
