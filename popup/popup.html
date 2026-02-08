@@ -43,9 +43,13 @@
     </div>
 
     <div class="popup-footer">
+      <button id="importBtn" class="btn btn-secondary">Import from JSON</button>
       <button id="exportBtn" class="btn btn-primary">Export to JSON</button>
+      <button id="clearBtn" class="btn btn-danger">Clear Notes</button>
     </div>
   </div>
+
+  <input type="file" id="fileInput" accept=".json" style="display: none;" />
 
   <script src="popup.js"></script>
 </body>

@@ -314,6 +314,8 @@ body {
   padding: 12px 16px;
   border-top: 1px solid #ddd;
   background: #f9f9f9;
+  display: flex;
+  gap: 8px;
 }
 
 .btn {
@@ -323,17 +325,47 @@ body {
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  flex: 1;
 }
 
 .btn-primary {
   background: #4a90e2;
   color: white;
   border-color: #4a90e2;
-  width: 100%;
 }
 
 .btn-primary:hover {
   background: #357abd;
+}
+
+.btn-secondary {
+  background: white;
+  color: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.btn-secondary:hover {
+  background: #f0f7ff;
+}
+
+.btn-danger {
+  background: white;
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.btn-danger:hover {
+  background: #fff5f5;
+}
+
+.btn-danger.confirm-state {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.btn-danger.confirm-state:hover {
+  background: #c82333;
 }
 
 .btn-delete-page,
