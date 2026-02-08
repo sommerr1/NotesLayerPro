@@ -433,6 +433,267 @@ export async function exportToJSON() {
 }
 
 /**
+ * Check for conflicts when importing data
+ */
+export async function checkImportConflicts(importData) {
+  const database = getDB();
+  
+  // Get all existing IDs
+  const [existingPages, existingAnchors, existingNotes] = await Promise.all([
+    new Promise((resolve, reject) => {
+      const transaction = database.transaction(['pages'], 'readonly');
+      const store = transaction.objectStore('pages');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    }),
+    new Promise((resolve, reject) => {
+      const transaction = database.transaction(['anchors'], 'readonly');
+      const store = transaction.objectStore('anchors');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    }),
+    new Promise((resolve, reject) => {
+      const transaction = database.transaction(['notes'], 'readonly');
+      const store = transaction.objectStore('notes');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    })
+  ]);
+
+  const existingPageIds = new Set(existingPages.map(p => p.id));
+  const existingAnchorIds = new Set(existingAnchors.map(a => a.id));
+  const existingNoteIds = new Set(existingNotes.map(n => n.id));
+
+  const importPageIds = new Set((importData.pages || []).map(p => p.id));
+  const importAnchorIds = new Set((importData.anchors || []).map(a => a.id));
+  const importNoteIds = new Set((importData.notes || []).map(n => n.id));
+
+  const pageConflicts = [...importPageIds].filter(id => existingPageIds.has(id)).length;
+  const anchorConflicts = [...importAnchorIds].filter(id => existingAnchorIds.has(id)).length;
+  const noteConflicts = [...importNoteIds].filter(id => existingNoteIds.has(id)).length;
+
+  const totalConflicts = pageConflicts + anchorConflicts + noteConflicts;
+
+  return {
+    hasConflicts: totalConflicts > 0,
+    conflictCount: totalConflicts,
+    pageConflicts,
+    anchorConflicts,
+    noteConflicts
+  };
+}
+
+/**
+ * Import data from JSON with conflict resolution
+ */
+export async function importFromJSON(importData, conflictStrategy) {
+  const database = getDB();
+  
+  const stats = {
+    pagesAdded: 0,
+    pagesUpdated: 0,
+    anchorsAdded: 0,
+    anchorsUpdated: 0,
+    notesAdded: 0,
+    notesUpdated: 0
+  };
+
+  // Import pages
+  if (importData.pages && importData.pages.length > 0) {
+    const existingPages = await new Promise((resolve, reject) => {
+      const transaction = database.transaction(['pages'], 'readonly');
+      const store = transaction.objectStore('pages');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    const existingPageIds = new Set(existingPages.map(p => p.id));
+
+    for (const page of importData.pages) {
+      const exists = existingPageIds.has(page.id);
+      
+      if (exists && conflictStrategy === 'keepOriginal') {
+        // Skip conflicting page
+        continue;
+      }
+
+      // Import or update page
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction(['pages'], 'readwrite');
+        const store = transaction.objectStore('pages');
+        
+        // Ensure required fields
+        if (!page.createdAt) page.createdAt = Date.now();
+        page.updatedAt = Date.now();
+        
+        const request = store.put(page);
+        request.onsuccess = () => {
+          if (exists) {
+            stats.pagesUpdated++;
+          } else {
+            stats.pagesAdded++;
+          }
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  // Import anchors
+  if (importData.anchors && importData.anchors.length > 0) {
+    const existingAnchors = await new Promise((resolve, reject) => {
+      const transaction = database.transaction(['anchors'], 'readonly');
+      const store = transaction.objectStore('anchors');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    const existingAnchorIds = new Set(existingAnchors.map(a => a.id));
+
+    for (const anchor of importData.anchors) {
+      const exists = existingAnchorIds.has(anchor.id);
+      
+      if (exists && conflictStrategy === 'keepOriginal') {
+        // Skip conflicting anchor
+        continue;
+      }
+
+      // Import or update anchor
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction(['anchors'], 'readwrite');
+        const store = transaction.objectStore('anchors');
+        
+        // Ensure required fields
+        if (!anchor.createdAt) anchor.createdAt = Date.now();
+        
+        const request = store.put(anchor);
+        request.onsuccess = () => {
+          if (exists) {
+            stats.anchorsUpdated++;
+          } else {
+            stats.anchorsAdded++;
+          }
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  // Import notes
+  if (importData.notes && importData.notes.length > 0) {
+    const existingNotes = await new Promise((resolve, reject) => {
+      const transaction = database.transaction(['notes'], 'readonly');
+      const store = transaction.objectStore('notes');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    const existingNoteIds = new Set(existingNotes.map(n => n.id));
+
+    for (const note of importData.notes) {
+      const exists = existingNoteIds.has(note.id);
+      
+      if (exists && conflictStrategy === 'keepOriginal') {
+        // Skip conflicting note
+        continue;
+      }
+
+      // Import or update note
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction(['notes'], 'readwrite');
+        const store = transaction.objectStore('notes');
+        
+        // Ensure required fields
+        if (!note.createdAt) note.createdAt = Date.now();
+        note.updatedAt = Date.now();
+        
+        const request = store.put(note);
+        request.onsuccess = () => {
+          if (exists) {
+            stats.notesUpdated++;
+          } else {
+            stats.notesAdded++;
+          }
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Clear all notes, anchors, and pages
+ */
+export async function clearAllNotes() {
+  const database = getDB();
+  
+  // Get all pages first
+  const allPages = await new Promise((resolve, reject) => {
+    const transaction = database.transaction(['pages'], 'readonly');
+    const store = transaction.objectStore('pages');
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+
+  // Delete all pages (this will cascade delete notes and anchors via deletePage)
+  for (const page of allPages) {
+    await deletePage(page.id);
+  }
+
+  // Also clear any orphaned anchors and notes (in case of data inconsistency)
+  const [allAnchors, allNotes] = await Promise.all([
+    new Promise((resolve, reject) => {
+      const transaction = database.transaction(['anchors'], 'readonly');
+      const store = transaction.objectStore('anchors');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    }),
+    new Promise((resolve, reject) => {
+      const transaction = database.transaction(['notes'], 'readonly');
+      const store = transaction.objectStore('notes');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    })
+  ]);
+
+  // Delete orphaned anchors
+  for (const anchor of allAnchors) {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(['anchors'], 'readwrite');
+      const store = transaction.objectStore('anchors');
+      const request = store.delete(anchor.id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Delete orphaned notes
+  for (const note of allNotes) {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(['notes'], 'readwrite');
+      const store = transaction.objectStore('notes');
+      const request = store.delete(note.id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
+/**
  * Generate unique ID
  */
 function generateId() {

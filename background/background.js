@@ -1,6 +1,6 @@
 // Background service worker
 
-import { initDB, savePage, saveAnchor, saveNote, getPageByUrl, getNotesByPageId, getAnchorsByPageId, getNoteById, getAnchorById, deleteNote, deleteAnchor, deletePage, getAllPages, searchNotes, exportToJSON } from './db.js';
+import { initDB, savePage, saveAnchor, saveNote, getPageByUrl, getNotesByPageId, getAnchorsByPageId, getNoteById, getAnchorById, deleteNote, deleteAnchor, deletePage, getAllPages, searchNotes, exportToJSON, checkImportConflicts, importFromJSON, clearAllNotes } from './db.js';
 import { GoogleSearchProvider } from './google-search-provider.js';
 
 let llmProvider = null;
@@ -198,6 +198,39 @@ async function handleMessage(message, sender, sendResponse) {
           });
         } catch (error) {
           console.error('Error exporting to JSON:', error);
+          sendResponse({ success: false, error: error.message });
+        }
+        break;
+      }
+
+      case 'checkImportConflicts': {
+        try {
+          const result = await checkImportConflicts(message.importData);
+          sendResponse({ success: true, ...result });
+        } catch (error) {
+          console.error('Error checking import conflicts:', error);
+          sendResponse({ success: false, error: error.message });
+        }
+        break;
+      }
+
+      case 'importFromJSON': {
+        try {
+          const stats = await importFromJSON(message.importData, message.conflictStrategy);
+          sendResponse({ success: true, stats });
+        } catch (error) {
+          console.error('Error importing from JSON:', error);
+          sendResponse({ success: false, error: error.message });
+        }
+        break;
+      }
+
+      case 'clearAllNotes': {
+        try {
+          await clearAllNotes();
+          sendResponse({ success: true });
+        } catch (error) {
+          console.error('Error clearing all notes:', error);
           sendResponse({ success: false, error: error.message });
         }
         break;

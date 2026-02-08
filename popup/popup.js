@@ -277,6 +277,24 @@ function setupEventListeners() {
     exportBtn.addEventListener('click', exportToJSON);
   }
 
+  // Import button
+  const importBtn = document.getElementById('importBtn');
+  if (importBtn) {
+    importBtn.addEventListener('click', importFromJSON);
+  }
+
+  // File input for import
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', handleFileSelect);
+  }
+
+  // Clear button
+  const clearBtn = document.getElementById('clearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearNotes);
+  }
+
   // Reload button
   const reloadBtn = document.getElementById('reloadBtn');
   if (reloadBtn) {
@@ -444,6 +462,143 @@ async function exportToJSON() {
   } catch (error) {
     console.error('Error exporting:', error);
     alert('Error exporting: ' + error.message);
+  }
+}
+
+/**
+ * Import from JSON - opens file picker
+ */
+function importFromJSON() {
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) {
+    fileInput.click();
+  }
+}
+
+/**
+ * Handle file selection for import
+ */
+async function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const importBtn = document.getElementById('importBtn');
+  const originalText = importBtn.textContent;
+  importBtn.textContent = 'Importing...';
+  importBtn.disabled = true;
+
+  try {
+    const text = await file.text();
+    const importData = JSON.parse(text);
+
+    // Validate structure
+    if (!importData.pages || !importData.anchors || !importData.notes) {
+      throw new Error('Invalid import file format. Expected: { pages, anchors, notes }');
+    }
+
+    // Check for conflicts
+    const conflictCheck = await chrome.runtime.sendMessage({
+      action: 'checkImportConflicts',
+      importData
+    });
+
+    if (!conflictCheck.success) {
+      throw new Error(conflictCheck.error || 'Failed to check conflicts');
+    }
+
+    let conflictStrategy = 'keepOriginal'; // default
+
+    // If conflicts exist, ask user for strategy
+    if (conflictCheck.hasConflicts) {
+      const userChoice = confirm(
+        `Found ${conflictCheck.conflictCount} conflicting items.\n\n` +
+        `Click OK to use imported data (replace existing)\n` +
+        `Click Cancel to keep original data (skip conflicts)`
+      );
+      conflictStrategy = userChoice ? 'useImported' : 'keepOriginal';
+    }
+
+    // Perform import
+    const importResponse = await chrome.runtime.sendMessage({
+      action: 'importFromJSON',
+      importData,
+      conflictStrategy
+    });
+
+    if (importResponse.success) {
+      const stats = importResponse.stats;
+      alert(
+        `Import completed!\n\n` +
+        `Pages: ${stats.pagesAdded} added, ${stats.pagesUpdated} updated\n` +
+        `Anchors: ${stats.anchorsAdded} added, ${stats.anchorsUpdated} updated\n` +
+        `Notes: ${stats.notesAdded} added, ${stats.notesUpdated} updated`
+      );
+      // Reload pages list
+      await loadPages();
+    } else {
+      throw new Error(importResponse.error || 'Import failed');
+    }
+  } catch (error) {
+    console.error('Error importing:', error);
+    alert('Error importing: ' + error.message);
+  } finally {
+    importBtn.textContent = originalText;
+    importBtn.disabled = false;
+    // Reset file input
+    event.target.value = '';
+  }
+}
+
+// State for clear notes confirmation
+let clearNotesConfirmState = false;
+
+/**
+ * Clear all notes with confirmation
+ */
+async function clearNotes() {
+  const clearBtn = document.getElementById('clearBtn');
+  
+  if (!clearNotesConfirmState) {
+    // First click - show warning
+    clearNotesConfirmState = true;
+    const originalText = clearBtn.textContent;
+    clearBtn.textContent = '⚠️ All notes will be permanently deleted. Click again to confirm';
+    clearBtn.classList.add('confirm-state');
+    
+    // Reset after 5 seconds if not confirmed
+    setTimeout(() => {
+      if (clearNotesConfirmState) {
+        clearNotesConfirmState = false;
+        clearBtn.textContent = originalText;
+        clearBtn.classList.remove('confirm-state');
+      }
+    }, 5000);
+  } else {
+    // Second click - confirm and clear
+    clearNotesConfirmState = false;
+    clearBtn.textContent = 'Clearing...';
+    clearBtn.disabled = true;
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'clearAllNotes'
+      });
+
+      if (response.success) {
+        alert('All notes have been permanently deleted.');
+        // Reload pages list
+        await loadPages();
+      } else {
+        throw new Error(response.error || 'Failed to clear notes');
+      }
+    } catch (error) {
+      console.error('Error clearing notes:', error);
+      alert('Error clearing notes: ' + error.message);
+    } finally {
+      clearBtn.textContent = 'Clear Notes';
+      clearBtn.classList.remove('confirm-state');
+      clearBtn.disabled = false;
+    }
   }
 }
 
