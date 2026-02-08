@@ -29,6 +29,12 @@ body {
   align-items: center;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .popup-header h1 {
   font-size: 18px;
   font-weight: 600;
@@ -59,6 +65,60 @@ body {
 .reload-btn:active {
   background: rgba(255, 255, 255, 0.4);
   transform: scale(0.95);
+}
+
+.toggle-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.toggle-btn:active {
+  background: rgba(255, 255, 255, 0.4);
+  transform: scale(0.95);
+}
+
+.toggle-btn.active {
+  background: rgba(255, 255, 255, 0.9);
+  color: #4a90e2;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+.toggle-btn.inactive {
+  background: rgba(255, 255, 255, 0.15);
+  opacity: 0.7;
+}
+
+.toggle-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.toggle-btn svg .toggle-circle {
+  transition: transform 0.3s ease;
+  transform-origin: center;
+}
+
+.toggle-btn.active svg .toggle-circle {
+  transform: translateX(10px);
+}
+
+.toggle-btn.inactive svg .toggle-circle {
+  transform: translateX(0);
 }
 
 .popup-search {

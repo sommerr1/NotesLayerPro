@@ -22,6 +22,17 @@
   border-bottom: 2px solid rgba(255, 0, 0, 0.8) !important;
 }
 
+.notes-layer-highlight.notes-layer-disabled {
+  background-color: transparent !important;
+  border-bottom: none !important;
+  cursor: default !important;
+  display: inline !important;
+}
+
+.notes-layer-highlight.notes-layer-disabled:hover {
+  background-color: transparent !important;
+}
+
 .notes-layer-marker {
   position: absolute !important;
   z-index: 10000 !important;

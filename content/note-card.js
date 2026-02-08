@@ -1833,6 +1833,11 @@ class NoteCard {
       return;
     }
     
+    // Check if notes mode is enabled
+    if (window.notesLayerContent && !window.notesLayerContent.notesEnabled) {
+      return;
+    }
+    
     if (!this.connectionLine) {
       this.createConnectionLine();
     }
@@ -1878,6 +1883,12 @@ class NoteCard {
    * Update connection line position
    */
   updateConnectionLine() {
+    // Check if notes mode is enabled
+    if (window.notesLayerContent && !window.notesLayerContent.notesEnabled) {
+      this.hideConnectionLine();
+      return;
+    }
+    
     if (!this.connectionLine || !this.connectionLine.path) {
       return;
     }

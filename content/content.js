@@ -50,6 +50,7 @@ class NotesLayerContent {
     this.currentTooltip = null;
     this.currentNoteId = null;
     this.isCreatingNote = false; // Flag to prevent duplicate note creation
+    this.notesEnabled = true; // Notes mode enabled by default
   }
 
   /**
@@ -80,13 +81,27 @@ class NotesLayerContent {
       // Additional wait for dynamic content (especially for SPAs)
       await new Promise(resolve => setTimeout(resolve, 100));
       
+      // Load notes toggle state
+      await this.loadNotesToggleState();
+      console.log('Notes Layer Pro: Notes toggle state loaded:', this.notesEnabled);
+      
+      // Setup storage change listener for toggle state synchronization
+      this.setupToggleStateListener();
+      
+      // Setup message listener for toggle state changes
+      this.setupToggleMessageListener();
+      
       // Get current page info
       await this.loadPageInfo();
       console.log('Notes Layer Pro: Page info loaded', this.currentPage ? `pageId: ${this.currentPage.id}` : 'no page');
 
-      // Restore notes for current page
-      await this.restoreNotes();
-      console.log('Notes Layer Pro: Notes restored');
+      // Restore notes for current page (only if enabled)
+      if (this.notesEnabled) {
+        await this.restoreNotes();
+        console.log('Notes Layer Pro: Notes restored');
+      } else {
+        console.log('Notes Layer Pro: Notes mode disabled, skipping restore');
+      }
 
       // Setup text selection handler
       this.setupSelectionHandler();
@@ -120,6 +135,155 @@ class NotesLayerContent {
       // Don't block - try to continue
       this.isInitialized = true;
     }
+  }
+
+  /**
+   * Load notes toggle state from storage
+   */
+  async loadNotesToggleState() {
+    try {
+      const result = await chrome.storage.local.get(['notesEnabled']);
+      this.notesEnabled = result.notesEnabled !== undefined ? result.notesEnabled : true;
+    } catch (error) {
+      console.error('Notes Layer Pro: Error loading notes toggle state:', error);
+      this.notesEnabled = true; // Default to enabled on error
+    }
+  }
+
+  /**
+   * Setup storage change listener for toggle state synchronization
+   */
+  setupToggleStateListener() {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.notesEnabled) {
+        const newState = changes.notesEnabled.newValue !== undefined ? changes.notesEnabled.newValue : true;
+        this.handleToggleStateChange(newState);
+      }
+    });
+  }
+
+  /**
+   * Setup message listener for toggle state changes from popup
+   */
+  setupToggleMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'notesToggleChanged') {
+        this.handleToggleStateChange(message.enabled);
+        sendResponse({ success: true });
+      }
+      return false; // Don't keep channel open
+    });
+  }
+
+  /**
+   * Handle toggle state change
+   */
+  async handleToggleStateChange(enabled) {
+    const previousState = this.notesEnabled;
+    this.notesEnabled = enabled;
+    
+    console.log('Notes Layer Pro: Notes toggle state changed:', enabled);
+    
+    if (enabled && !previousState) {
+      // Mode enabled - show notes and restore if needed
+      this.showAllNotes();
+      if (this.currentPage && !this.highlighter.highlights.size) {
+        await this.restoreNotes();
+      }
+    } else if (!enabled && previousState) {
+      // Mode disabled - hide notes
+      this.hideAllNotes();
+    }
+  }
+
+  /**
+   * Hide all notes and markers
+   */
+  hideAllNotes() {
+    // Disable highlights (remove visual styles but keep text visible)
+    if (this.highlighter && this.highlighter.highlights) {
+      for (const [noteId, highlightData] of this.highlighter.highlights.entries()) {
+        if (highlightData.element) {
+          highlightData.element.classList.add('notes-layer-disabled');
+        }
+        if (highlightData.elements) {
+          highlightData.elements.forEach(el => {
+            if (el) el.classList.add('notes-layer-disabled');
+          });
+        }
+      }
+    }
+    
+    // Disable all highlights (via DOM query for reliability)
+    const highlights = document.querySelectorAll('.notes-layer-highlight');
+    highlights.forEach(highlight => {
+      highlight.classList.add('notes-layer-disabled');
+    });
+    
+    // Hide all markers
+    const markers = document.querySelectorAll('.notes-layer-marker');
+    markers.forEach(marker => {
+      marker.style.display = 'none';
+    });
+    
+    // Hide all note cards
+    const noteCards = document.querySelectorAll('.notes-layer-card-container');
+    noteCards.forEach(card => {
+      card.style.display = 'none';
+    });
+    
+    // Hide all connection lines
+    const connectionLines = document.querySelectorAll('.notes-layer-connection-line');
+    connectionLines.forEach(line => {
+      line.style.display = 'none';
+    });
+    
+    // Hide create note button
+    this.hideCreateNoteButton();
+    
+    // Hide tooltip
+    this.hideNotePreview();
+  }
+
+  /**
+   * Show all notes and markers
+   */
+  showAllNotes() {
+    // Enable highlights (restore visual styles)
+    if (this.highlighter && this.highlighter.highlights) {
+      for (const [noteId, highlightData] of this.highlighter.highlights.entries()) {
+        if (highlightData.element) {
+          highlightData.element.classList.remove('notes-layer-disabled');
+        }
+        if (highlightData.elements) {
+          highlightData.elements.forEach(el => {
+            if (el) el.classList.remove('notes-layer-disabled');
+          });
+        }
+      }
+    }
+    
+    // Enable all highlights (via DOM query for reliability)
+    const highlights = document.querySelectorAll('.notes-layer-highlight');
+    highlights.forEach(highlight => {
+      highlight.classList.remove('notes-layer-disabled');
+    });
+    
+    // Show all markers
+    const markers = document.querySelectorAll('.notes-layer-marker');
+    markers.forEach(marker => {
+      marker.style.display = '';
+    });
+    
+    // Show all note cards
+    const noteCards = document.querySelectorAll('.notes-layer-card-container');
+    noteCards.forEach(card => {
+      card.style.display = '';
+    });
+    
+    // Show connection lines for open cards (they will be updated by NoteCard instances)
+    // Note: Connection lines are managed by NoteCard instances, so they will be shown
+    // automatically when cards are shown and not being dragged
   }
 
   /**
@@ -394,6 +558,12 @@ class NotesLayerContent {
    * Restore notes for current page
    */
   async restoreNotes(retryCount = 0) {
+    // Check if notes mode is enabled
+    if (!this.notesEnabled) {
+      console.log('Notes Layer Pro: Notes mode disabled, skipping restore');
+      return;
+    }
+    
     if (!this.currentPage) {
       console.log('Notes Layer Pro: No current page, skipping restore');
       return;
@@ -522,6 +692,12 @@ class NotesLayerContent {
     try {
       document.addEventListener('mouseup', async (e) => {
         try {
+          // Check if notes mode is enabled
+          if (!this.notesEnabled) {
+            this.hideCreateNoteButton();
+            return;
+          }
+          
           // Don't interfere with existing UI interactions
           if (this.closestFromEvent(e, '.notes-layer-card-container') ||
               this.closestFromEvent(e, '.notes-layer-marker')) {
@@ -659,6 +835,10 @@ class NotesLayerContent {
         // This is a fallback in case setupMarkerHandlers didn't catch it
         const existingHighlight = this.getHighlightFromEvent(e);
         if (existingHighlight) {
+          // Check if notes mode is enabled
+          if (!this.notesEnabled) {
+            return;
+          }
           console.log('Notes Layer Pro: Double-click on existing highlight - opening for editing (fallback)');
           const noteId = existingHighlight.dataset.noteId;
           if (noteId) {
@@ -668,6 +848,12 @@ class NotesLayerContent {
             await this.showNoteCard(noteId);
           }
           return; // Don't create new note if editing existing one
+        }
+
+        // Check if notes mode is enabled
+        if (!this.notesEnabled) {
+          console.log('Notes Layer Pro: Notes mode disabled, skipping double-click');
+          return;
         }
 
         // Check if we're waiting for re-anchoring
@@ -806,6 +992,12 @@ class NotesLayerContent {
    * Create note from text selection
    */
   async createNoteFromSelection(selection) {
+    // Check if notes mode is enabled
+    if (!this.notesEnabled) {
+      console.log('Notes Layer Pro: Notes mode disabled, cannot create note');
+      return;
+    }
+    
     // Prevent duplicate creation
     if (this.isCreatingNote) {
       console.log('Notes Layer Pro: Note creation already in progress, skipping');
@@ -1057,6 +1249,11 @@ class NotesLayerContent {
     document.addEventListener('dblclick', async (e) => {
       console.log('Notes Layer Pro: setupMarkerHandlers - dblclick detected');
       
+      // Check if notes mode is enabled
+      if (!this.notesEnabled) {
+        return;
+      }
+      
       // Hide tooltip if visible
       this.hideNotePreview();
 
@@ -1148,6 +1345,11 @@ class NotesLayerContent {
     // Use mouseover/mouseout with event delegation
     // mouseenter/mouseleave don't bubble, so we can't use them with delegation
     document.addEventListener('mouseover', async (e) => {
+      // Check if notes mode is enabled
+      if (!this.notesEnabled) {
+        return;
+      }
+      
       const highlight = this.getHighlightFromEvent(e);
       if (!highlight) return;
 
@@ -1500,6 +1702,12 @@ class NotesLayerContent {
    * Show note card
    */
   async showNoteCard(noteId, noteData = null, position = null) {
+    // Check if notes mode is enabled
+    if (!this.notesEnabled) {
+      console.log('Notes Layer Pro: Notes mode disabled, cannot show note card');
+      return;
+    }
+    
     // Close only unpinned cards (keep pinned cards open)
     this.closeUnpinnedCards();
 

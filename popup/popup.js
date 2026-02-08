@@ -6,6 +6,7 @@ let currentSearchQuery = '';
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadNotesToggleState();
   await loadPages();
   setupEventListeners();
 });
@@ -242,6 +243,82 @@ function getNotePreview(note) {
 }
 
 /**
+ * Load notes toggle state from storage
+ */
+async function loadNotesToggleState() {
+  try {
+    const result = await chrome.storage.local.get(['notesEnabled']);
+    const enabled = result.notesEnabled !== undefined ? result.notesEnabled : true;
+    updateToggleButton(enabled);
+  } catch (error) {
+    console.error('Error loading notes toggle state:', error);
+    updateToggleButton(true); // Default to enabled on error
+  }
+}
+
+/**
+ * Save notes toggle state to storage
+ */
+async function saveNotesToggleState(enabled) {
+  try {
+    await chrome.storage.local.set({ notesEnabled: enabled });
+    updateToggleButton(enabled);
+    
+    // Notify all tabs about the state change
+    try {
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        if (tab.id && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://')) {
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              action: 'notesToggleChanged',
+              enabled: enabled
+            });
+          } catch (e) {
+            // Ignore errors for tabs that don't have content script loaded
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error notifying tabs:', error);
+    }
+  } catch (error) {
+    console.error('Error saving notes toggle state:', error);
+  }
+}
+
+/**
+ * Update toggle button visual state
+ */
+function updateToggleButton(enabled) {
+  const toggleBtn = document.getElementById('notesToggleBtn');
+  if (!toggleBtn) return;
+  
+  toggleBtn.classList.remove('active', 'inactive');
+  if (enabled) {
+    toggleBtn.classList.add('active');
+    toggleBtn.title = 'Disable notes mode';
+  } else {
+    toggleBtn.classList.add('inactive');
+    toggleBtn.title = 'Enable notes mode';
+  }
+}
+
+/**
+ * Toggle notes mode
+ */
+async function toggleNotesMode() {
+  try {
+    const result = await chrome.storage.local.get(['notesEnabled']);
+    const currentState = result.notesEnabled !== undefined ? result.notesEnabled : true;
+    const newState = !currentState;
+    await saveNotesToggleState(newState);
+  } catch (error) {
+    console.error('Error toggling notes mode:', error);
+  }
+}
+
+/**
  * Setup event listeners
  */
 function setupEventListeners() {
@@ -299,6 +376,12 @@ function setupEventListeners() {
   const reloadBtn = document.getElementById('reloadBtn');
   if (reloadBtn) {
     reloadBtn.addEventListener('click', reloadExtension);
+  }
+
+  // Notes toggle button
+  const notesToggleBtn = document.getElementById('notesToggleBtn');
+  if (notesToggleBtn) {
+    notesToggleBtn.addEventListener('click', toggleNotesMode);
   }
 }
 
