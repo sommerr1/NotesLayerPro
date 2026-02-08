@@ -373,16 +373,9 @@ class NotesLayerContent {
             this.currentPage = response.page;
           }
         } else {
-          // Create new page
-          const createResponse = await safeSendMessage({
-            action: 'savePage',
-            url,
-            title
-          });
-
-          if (createResponse.success) {
-            this.currentPage = createResponse.page;
-          }
+          // Page doesn't exist yet - don't create it automatically
+          // It will be created when the first note is created
+          this.currentPage = null;
         }
       }
     } catch (error) {
@@ -850,11 +843,36 @@ class NotesLayerContent {
         await this.loadPageInfo();
       }
 
+      // If page doesn't exist, create it now (first note on this page)
       if (!this.currentPage) {
-        console.error('Notes Layer Pro: Failed to initialize page');
-        alert('Ошибка: не удалось инициализировать страницу. Пожалуйста, перезагрузите страницу и попробуйте снова.');
-        this.isCreatingNote = false;
-        return;
+        console.log('Notes Layer Pro: Page not found, creating new page for first note');
+        const url = window.location.href;
+        let title = document.title;
+
+        // Try to extract Copilot chat title if on Copilot page
+        if (this.isCopilotPage()) {
+          const chatTitle = this.getCopilotChatTitle();
+          if (chatTitle) {
+            title = chatTitle;
+            console.log('Notes Layer Pro: Using Copilot chat title for new page:', title);
+          }
+        }
+
+        const createResponse = await safeSendMessage({
+          action: 'savePage',
+          url,
+          title
+        });
+
+        if (createResponse.success && createResponse.page) {
+          this.currentPage = createResponse.page;
+          console.log('Notes Layer Pro: Page created successfully:', this.currentPage.id);
+        } else {
+          console.error('Notes Layer Pro: Failed to create page');
+          alert('Ошибка: не удалось создать страницу. Пожалуйста, перезагрузите страницу и попробуйте снова.');
+          this.isCreatingNote = false;
+          return;
+        }
       }
 
       console.log('Notes Layer Pro: Starting note creation process');
